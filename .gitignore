@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+
+# Editor / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Data lokal (privat, tidak boleh diunggah)
+dataset/
+daftar_absensi.csv
+daftar_absensi.csv.bak
+.webui_kunci
+
+# Log dan file sementara
+*.log
+*.tmp

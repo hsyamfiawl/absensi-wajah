@@ -1,0 +1,328 @@
+{% extends "base.html" %}
+{% block judul %}Absensi Langsung - Absensi Wajah{% endblock %}
+{% block remah %}Absensi Langsung{% endblock %}
+
+{% block konten %}
+<header class="judul-halaman">
+  <div>
+    <span class="eyebrow">Kamera real-time</span>
+    <h1>Absensi Langsung</h1>
+    <p class="sub">Arahkan wajah ke kamera. Kehadiran tercatat otomatis satu kali per hari.</p>
+  </div>
+  <div class="grup-tombol">
+    <span class="pil {{ 'pil-hadir' if kamera_aktif else 'pil-belum' }}" id="status-kamera-pil">
+      <span class="{{ 'titik-live' if kamera_aktif else 'titik-mati' }}"></span>
+      {{ 'Kamera aktif' if kamera_aktif else 'Kamera standby' }}
+    </span>
+  </div>
+</header>
+
+<section class="kamera-grid">
+  <article class="panel kamera-panel">
+    <div class="bingkai-kamera" id="bingkai-kamera">
+      <img id="stream" alt="Streaming kamera absensi">
+      <div class="overlay-kamera">
+        <span class="sudut kiri-atas"></span>
+        <span class="sudut kanan-atas"></span>
+        <span class="sudut kiri-bawah"></span>
+        <span class="sudut kanan-bawah"></span>
+
+        <div class="kamera-atas">
+          <span class="pil-live" id="label-live"><span class="titik-live"></span>Live</span>
+          <span class="kamera-resolusi" id="info-kamera">{{ jumlah_encoding }} encoding</span>
+        </div>
+
+        <div class="pemindai" id="pemindai" aria-hidden="true"></div>
+
+        <div class="placeholder-kamera" id="petunjuk">
+          <span class="placeholder-ikon">
+            <svg class="ikon" aria-hidden="true"><use href="#i-scan"></use></svg>
+          </span>
+          <h2>Kamera belum dinyalakan</h2>
+          <p>Klik tombol di bawah untuk memulai absensi wajah.</p>
+          <button class="tombol utama besar" type="button" onclick="nyalakan()">
+            <svg class="ikon" aria-hidden="true"><use href="#i-play"></use></svg>
+            Nyalakan Kamera
+          </button>
+        </div>
+
+        <div class="kamera-bawah">
+          <span><span class="kotak-warna hijau"></span>Dikenal</span>
+          <span><span class="kotak-warna merah"></span>Tidak dikenal</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="kontrol-kamera">
+      <button class="tombol utama" type="button" id="tombol-nyalakan" onclick="nyalakan()">
+        <svg class="ikon" aria-hidden="true"><use href="#i-play"></use></svg>
+        Nyalakan
+      </button>
+      <button class="tombol" type="button" onclick="matikan()">
+        <svg class="ikon" aria-hidden="true"><use href="#i-stop"></use></svg>
+        Hentikan
+      </button>
+      <button class="tombol" type="button" onclick="restartKamera()">
+        <svg class="ikon" aria-hidden="true"><use href="#i-refresh"></use></svg>
+        Restart
+      </button>
+      <button class="tombol" type="button" onclick="layarPenuh()">
+        <svg class="ikon" aria-hidden="true"><use href="#i-maximize"></use></svg>
+        Layar Penuh
+      </button>
+      <span class="kontrol-info">
+        <svg class="ikon" aria-hidden="true"><use href="#i-info"></use></svg>
+        Pencahayaan cukup &amp; wajah menghadap kamera
+      </span>
+    </div>
+  </article>
+
+  <aside class="kolom-kamera">
+    <article class="panel ringkasan-hadir">
+      <div class="ringkasan-angka">
+        <span class="ringkasan-ikon"><svg class="ikon" aria-hidden="true"><use href="#i-check-circle"></use></svg></span>
+        <div>
+          <strong id="s-hadir">{{ hari_ini|length }}</strong>
+          <span>hadir hari ini</span>
+        </div>
+      </div>
+      <div class="ringkasan-baris">
+        <span>Orang terdaftar</span>
+        <strong id="s-orang">{{ daftar_nama|length }}</strong>
+      </div>
+      <div class="ringkasan-baris">
+        <span>Foto dataset</span>
+        <strong id="s-foto">{{ jumlah_encoding }}</strong>
+      </div>
+      <div class="ringkasan-baris">
+        <span>Total catatan</span>
+        <strong id="s-total">-</strong>
+      </div>
+      <div class="ringkasan-status" id="s-kamera">Kamera siap dinyalakan</div>
+    </article>
+
+    <article class="panel">
+      <header class="panel-kepala">
+        <div>
+          <h2>Absen terbaru</h2>
+          <p>Langsung dari kamera</p>
+        </div>
+        <span class="pil-live"><span class="titik-live"></span>Live</span>
+      </header>
+      <ul class="daftar-hadir ringkas" id="daftar-hadir">
+        {% for r in hari_ini %}
+          <li>
+            <span class="avatar avatar-hijau">{{ r.nama[:1] }}</span>
+            <span class="hadir-info">
+              <strong>{{ r.nama }}</strong>
+              <small>Terverifikasi</small>
+            </span>
+            <span class="waktu-pil">{{ r.waktu[:5] }}</span>
+          </li>
+        {% else %}
+          <li class="kosong">Belum ada yang absen hari ini.</li>
+        {% endfor %}
+      </ul>
+    </article>
+
+    <article class="panel">
+      <header class="panel-kepala">
+        <div>
+          <h2>Log kejadian</h2>
+          <p>Aktivitas sistem</p>
+        </div>
+      </header>
+      <ul class="kejadian" id="kejadian" data-kosong="Belum ada kejadian.">
+        {% for k in kejadian %}
+          <li>
+            <span class="kejadian-titik"></span>
+            <div class="kejadian-isi">
+              <strong>{{ k.pesan }}</strong>
+              <small>{{ k.waktu }}</small>
+            </div>
+          </li>
+        {% else %}
+          <li class="kosong">Belum ada kejadian.</li>
+        {% endfor %}
+      </ul>
+    </article>
+  </aside>
+</section>
+{% endblock %}
+
+{% block skrip %}
+<script>
+let penghitung = null;
+let kameraMenyala = false;
+
+function elemen(id) { return document.getElementById(id); }
+
+function aturStatusKamera(aktif, galat) {
+  const pil = elemen('status-kamera-pil');
+  const info = elemen('s-kamera');
+  const label = elemen('label-live');
+  if (pil) {
+    pil.className = 'pil ' + (aktif ? 'pil-hadir' : 'pil-belum');
+    pil.innerHTML = '<span class="' + (aktif ? 'titik-live' : 'titik-mati') + '"></span>' +
+      (aktif ? 'Kamera aktif' : 'Kamera standby');
+  }
+  if (info) info.textContent = aktif ? 'Kamera berjalan' : (galat || 'Kamera siap dinyalakan');
+  if (label) label.style.opacity = aktif ? '1' : '.35';
+}
+
+function nyalakan() {
+  const img = elemen('stream');
+  const petunjuk = elemen('petunjuk');
+  if (!img) return;
+  img.src = '/api/stream.mjpg?t=' + Date.now();
+  kameraMenyala = true;
+  if (petunjuk) petunjuk.classList.add('sembunyi');
+  elemen('bingkai-kamera').classList.add('aktif');
+  aturStatusKamera(true, '');
+  if (window.aturStatusKameraSisi) window.aturStatusKameraSisi(true);
+  mulaiPolling();
+}
+
+function matikan() {
+  const img = elemen('stream');
+  if (img) img.removeAttribute('src');
+  kameraMenyala = false;
+  const petunjuk = elemen('petunjuk');
+  if (petunjuk) petunjuk.classList.remove('sembunyi');
+  elemen('bingkai-kamera').classList.remove('aktif');
+  aturStatusKamera(false, '');
+  if (window.aturStatusKameraSisi) window.aturStatusKameraSisi(false);
+  if (penghitung) {
+    clearInterval(penghitung);
+    penghitung = null;
+  }
+}
+
+async function restartKamera() {
+  const status = elemen('s-kamera');
+  if (status) status.textContent = 'Menyalakan ulang kamera...';
+  try {
+    const jawab = await fetch('/api/kamera/restart', { method: 'POST' });
+    const hasil = await jawab.json();
+    if (!hasil.ok) {
+      tampilkanToast(hasil.pesan || 'Gagal menyalakan ulang kamera.', 'error');
+      if (status) status.textContent = hasil.pesan || 'Kamera gagal dinyalakan';
+    } else {
+      matikan();
+      setTimeout(nyalakan, 650);
+    }
+  } catch (e) {
+    tampilkanToast('Gagal menghubungi server.', 'error');
+  }
+}
+
+function layarPenuh() {
+  const bingkai = elemen('bingkai-kamera');
+  if (!bingkai) return;
+  if (document.fullscreenElement) {
+    document.exitFullscreen();
+  } else if (bingkai.requestFullscreen) {
+    bingkai.requestFullscreen();
+  }
+}
+
+function itemHadir(r) {
+  const li = document.createElement('li');
+  const avatar = document.createElement('span');
+  avatar.className = 'avatar avatar-hijau';
+  avatar.textContent = (r.nama || '?').slice(0, 1);
+  const info = document.createElement('span');
+  info.className = 'hadir-info';
+  const nama = document.createElement('strong');
+  nama.textContent = r.nama;
+  const ket = document.createElement('small');
+  ket.textContent = 'Terverifikasi';
+  info.append(nama, ket);
+  const waktu = document.createElement('span');
+  waktu.className = 'waktu-pil';
+  waktu.textContent = (r.waktu || '').slice(0, 5);
+  li.append(avatar, info, waktu);
+  return li;
+}
+
+function itemKejadian(k) {
+  const li = document.createElement('li');
+  const titik = document.createElement('span');
+  titik.className = 'kejadian-titik';
+  const isi = document.createElement('div');
+  isi.className = 'kejadian-isi';
+  const pesan = document.createElement('strong');
+  pesan.textContent = k.pesan;
+  const jam = document.createElement('small');
+  jam.textContent = k.waktu;
+  isi.append(pesan, jam);
+  li.append(titik, isi);
+  return li;
+}
+
+function isiDaftar(id, data, pembuat, teksKosong) {
+  const daftar = elemen(id);
+  if (!daftar) return;
+  daftar.replaceChildren();
+  if (data && data.length) {
+    data.forEach(function (item) { daftar.appendChild(pembuat(item)); });
+  } else {
+    const li = document.createElement('li');
+    li.className = 'kosong';
+    li.textContent = teksKosong;
+    daftar.appendChild(li);
+  }
+}
+
+function mulaiPolling() {
+  if (penghitung) return;
+  const segarkan = async function () {
+    try {
+      const data = await (await fetch('/api/status?t=' + Date.now())).json();
+      elemen('s-kamera').textContent = data.kamera_aktif
+        ? 'Kamera aktif (indeks ' + data.kamera_indeks + ')'
+        : (data.kamera_galat || 'Kamera standby');
+      elemen('s-orang').textContent = data.jumlah_orang;
+      elemen('s-foto').textContent = data.jumlah_encoding;
+      elemen('s-hadir').textContent = data.hadir_hari_ini;
+      elemen('s-total').textContent = data.total_catatan;
+      elemen('info-kamera').textContent = data.jumlah_encoding + ' encoding';
+      if (window.aturStatusKameraSisi) {
+        window.aturStatusKameraSisi(data.kamera_aktif, data.jumlah_encoding);
+      }
+
+      if (!data.kamera_aktif && kameraMenyala) {
+        aturStatusKamera(false, data.kamera_galat);
+      } else {
+        aturStatusKamera(data.kamera_aktif, data.kamera_galat);
+      }
+
+      isiDaftar('daftar-hadir', data.hari_ini, itemHadir, 'Belum ada yang absen hari ini.');
+      isiDaftar('kejadian', data.kejadian, itemKejadian, 'Belum ada kejadian.');
+    } catch (e) {
+      const info = elemen('s-kamera');
+      if (info) info.textContent = 'Server tidak merespons';
+    }
+  };
+  segarkan();
+  penghitung = setInterval(segarkan, 2500);
+}
+
+const mulaiOtomatis = new URLSearchParams(window.location.search).get('mulai') === '1';
+if (mulaiOtomatis) {
+  window.addEventListener('load', function () { setTimeout(nyalakan, 250); });
+} else {
+  mulaiPolling();
+}
+
+const gambarStream = elemen('stream');
+if (gambarStream) {
+  gambarStream.addEventListener('error', function () {
+    if (!kameraMenyala) return;
+    aturStatusKamera(false, 'Stream terputus');
+    const petunjuk = elemen('petunjuk');
+    if (petunjuk) petunjuk.classList.remove('sembunyi');
+  });
+}
+</script>
+{% endblock %}

@@ -1,0 +1,10 @@
+face_recognition==1.2.3
+opencv-python>=4.10,<5
+numpy>=1.26,<2
+Flask>=3.1,<4
+Pillow>=10,<13
+
+# Catatan: dlib TIDAK dipasang lewat file ini karena butuh compiler di Windows.
+# Pengguna Windows + Python 3.11 dapat memasang wheel yang sudah disertakan:
+#   python -m pip install dlib-19.24.1-cp311-cp311-win_amd64.whl
+# Setelah dlib terpasang, jalankan: python -m pip install -r requirements.txt

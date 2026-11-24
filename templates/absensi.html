@@ -1,0 +1,225 @@
+{% extends "base.html" %}
+{% block judul %}Rekap Absensi - Absensi Wajah{% endblock %}
+{% block remah %}Rekap Absensi{% endblock %}
+
+{% block konten %}
+<header class="judul-halaman">
+  <div>
+    <span class="eyebrow">Laporan kehadiran</span>
+    <h1>Rekap Absensi</h1>
+    <p class="sub">
+      {% if stat.ada_filter %}
+        Menampilkan {{ stat.jumlah_baris }} dari {{ stat.total_semua }} catatan
+      {% else %}
+        {{ stat.total_semua }} catatan tersimpan
+      {% endif %}
+    </p>
+  </div>
+  <div class="grup-tombol">
+    <a class="tombol" href="{{ url_for('absensi_export', **request.args) }}">
+      <svg class="ikon" aria-hidden="true"><use href="#i-download"></use></svg>
+      Ekspor CSV
+    </a>
+    <form method="post" action="{{ url_for('absensi_reset') }}"
+          data-konfirmasi="Kosongkan SELURUH catatan absensi? File lama akan dicadangkan.">
+      <button class="tombol bahaya" type="submit">
+        <svg class="ikon" aria-hidden="true"><use href="#i-trash"></use></svg>
+        Kosongkan
+      </button>
+    </form>
+  </div>
+</header>
+
+<section class="stat-grid ringkas-grid">
+  <article class="stat-kartu hijau kecil">
+    <span class="stat-ikon"><svg class="ikon" aria-hidden="true"><use href="#i-clipboard"></use></svg></span>
+    <div>
+      <strong class="stat-angka">{{ stat.jumlah_baris }}</strong>
+      <span class="stat-label">Baris ditampilkan</span>
+    </div>
+  </article>
+  <article class="stat-kartu sian kecil">
+    <span class="stat-ikon"><svg class="ikon" aria-hidden="true"><use href="#i-users"></use></svg></span>
+    <div>
+      <strong class="stat-angka">{{ stat.jumlah_nama }}</strong>
+      <span class="stat-label">Orang unik</span>
+    </div>
+  </article>
+  <article class="stat-kartu kuning kecil">
+    <span class="stat-ikon"><svg class="ikon" aria-hidden="true"><use href="#i-check-circle"></use></svg></span>
+    <div>
+      <strong class="stat-angka">{{ stat.hadir_hari_ini }}</strong>
+      <span class="stat-label">Hadir hari ini</span>
+    </div>
+  </article>
+  <article class="stat-kartu ungu kecil">
+    <span class="stat-ikon"><svg class="ikon" aria-hidden="true"><use href="#i-activity"></use></svg></span>
+    <div>
+      <strong class="stat-angka">{{ stat.total_semua }}</strong>
+      <span class="stat-label">Total catatan</span>
+    </div>
+  </article>
+</section>
+
+<section class="panel panel-filter">
+  <header class="panel-kepala">
+    <div>
+      <h2>Filter data</h2>
+      <p>Cari berdasarkan nama atau rentang tanggal</p>
+    </div>
+    <div class="filter-cepat">
+      <a class="chip-filter {{ 'aktif' if not stat.ada_filter }}" href="{{ url_for('halaman_absensi') }}">Semua</a>
+      <a class="chip-filter {{ 'aktif' if stat.tanggal == stat.tanggal_ini }}" href="{{ url_for('halaman_absensi', tanggal=stat.tanggal_ini) }}">Hari ini</a>
+      <a class="chip-filter {{ 'aktif' if stat.mulai == stat.bulan_ini ~ '-01' and not stat.selesai }}" href="{{ url_for('halaman_absensi', mulai=stat.bulan_ini ~ '-01') }}">Bulan ini</a>
+    </div>
+  </header>
+
+  <form method="get" class="filter">
+    <div class="filter-baris">
+      <div class="filter-field">
+        <label for="f-nama">Nama</label>
+        <div class="input-ikon">
+          <svg class="ikon" aria-hidden="true"><use href="#i-search"></use></svg>
+          <input id="f-nama" name="nama" value="{{ stat.nama }}" placeholder="Cari nama...">
+        </div>
+      </div>
+      <div class="filter-field">
+        <label for="f-tanggal">Tanggal</label>
+        <input id="f-tanggal" type="date" name="tanggal" value="{{ stat.tanggal }}">
+      </div>
+      <div class="filter-field">
+        <label for="f-mulai">Dari tanggal</label>
+        <input id="f-mulai" type="date" name="mulai" value="{{ stat.mulai }}">
+      </div>
+      <div class="filter-field">
+        <label for="f-selesai">Sampai tanggal</label>
+        <input id="f-selesai" type="date" name="selesai" value="{{ stat.selesai }}">
+      </div>
+      <div class="aksi-filter">
+        <button class="tombol utama" type="submit">
+          <svg class="ikon" aria-hidden="true"><use href="#i-search"></use></svg>
+          Terapkan
+        </button>
+        <a class="tombol" href="{{ url_for('halaman_absensi') }}">Reset</a>
+      </div>
+    </div>
+  </form>
+
+  {% if stat.ada_filter %}
+    <div class="filter-aktif">
+      <span>Filter aktif:</span>
+      {% if stat.nama %}<span class="chip-filter aktif">Nama: {{ stat.nama }}</span>{% endif %}
+      {% if stat.tanggal %}<span class="chip-filter aktif">Tanggal: {{ stat.tanggal }}</span>{% endif %}
+      {% if stat.mulai %}<span class="chip-filter aktif">Dari: {{ stat.mulai }}</span>{% endif %}
+      {% if stat.selesai %}<span class="chip-filter aktif">Sampai: {{ stat.selesai }}</span>{% endif %}
+    </div>
+  {% endif %}
+</section>
+
+<section class="grid-dua rekap-grid">
+  <article class="panel">
+    <header class="panel-kepala">
+      <div>
+        <h2>Catatan kehadiran</h2>
+        <p>Diurutkan dari yang terbaru</p>
+      </div>
+      <span class="pil pil-netral">{{ stat.jumlah_baris }} baris</span>
+    </header>
+
+    {% if baris %}
+      <div class="tabel-gulir tabel-tinggi">
+        <table class="tabel-absensi">
+          <thead>
+            <tr>
+              <th class="kolom-no">No</th>
+              <th>Nama</th>
+              <th>Tanggal</th>
+              <th>Waktu</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for r in baris %}
+              <tr>
+                <td class="kolom-no">{{ loop.index }}</td>
+                <td>
+                  <div class="sel-anggota">
+                    <span class="avatar avatar-kecil">{{ r.nama[:1] }}</span>
+                    <strong>{{ r.nama }}</strong>
+                  </div>
+                </td>
+                <td>{{ r.tanggal }}</td>
+                <td><span class="waktu-pil">{{ r.waktu }}</span></td>
+                <td><span class="pil pil-hadir"><span class="titik-live"></span>Hadir</span></td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <div class="kosong-besar">
+        <span class="kosong-ikon"><svg class="ikon" aria-hidden="true"><use href="#i-clipboard"></use></svg></span>
+        <h3>Belum ada catatan</h3>
+        {% if stat.ada_filter %}
+          <p>Tidak ada catatan yang cocok dengan filter yang dipilih.</p>
+          <a class="tombol" href="{{ url_for('halaman_absensi') }}">Hapus filter</a>
+        {% else %}
+          <p>Buka halaman Absensi Langsung untuk mulai mencatat kehadiran.</p>
+          <a class="tombol utama" href="{{ url_for('halaman_kamera', mulai=1) }}">
+            <svg class="ikon" aria-hidden="true"><use href="#i-play"></use></svg>
+            Mulai Absensi
+          </a>
+        {% endif %}
+      </div>
+    {% endif %}
+  </article>
+
+  <div class="rekap-kanan">
+    <article class="panel">
+      <header class="panel-kepala">
+        <div>
+          <h2>Rekap per orang</h2>
+          <p>{{ stat.jumlah_nama }} orang hadir</p>
+        </div>
+      </header>
+
+      {% if stat.per_nama %}
+        <ul class="rekap-orang">
+          {% for nama, jumlah in stat.per_nama %}
+            <li>
+              <div class="rekap-baris">
+                <span class="avatar avatar-kecil">{{ nama[:1] }}</span>
+                <span class="rekap-nama">
+                  <a href="{{ url_for('halaman_absensi', nama=nama) }}">{{ nama }}</a>
+                  <small>{{ jumlah }} kali hadir</small>
+                </span>
+                <strong>{{ jumlah }}</strong>
+              </div>
+              <span class="rekap-bar"><span style="width: {{ (jumlah / stat.maks_per_nama * 100)|round|int }}%"></span></span>
+            </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p class="kosong">Belum ada data untuk direkap.</p>
+      {% endif %}
+    </article>
+
+    <article class="panel">
+      <header class="panel-kepala">
+        <div>
+          <h2>Belum pernah hadir</h2>
+          <p>Ada di dataset, belum punya catatan</p>
+        </div>
+      </header>
+      {% set ada = belum_hadir %}
+      {% if ada %}
+        <ul class="chip-daftar">
+          {% for n in ada %}<li class="chip absen">{{ n }}</li>{% endfor %}
+        </ul>
+      {% else %}
+        <p class="kosong">Semua orang terdaftar sudah punya catatan absensi.</p>
+      {% endif %}
+    </article>
+  </div>
+</section>
+{% endblock %}

@@ -1,0 +1,327 @@
+{% extends "base.html" %}
+{% block judul %}Dataset Wajah - Absensi Wajah{% endblock %}
+{% block remah %}Dataset Wajah{% endblock %}
+
+{% block konten %}
+<header class="judul-halaman">
+  <div>
+    <span class="eyebrow">Data wajah</span>
+    <h1>Dataset Wajah</h1>
+    <p class="sub">{{ jumlah_encoding }} encoding dimuat &middot; {{ orang|length }} orang terdaftar</p>
+  </div>
+  <form method="post" action="{{ url_for('dataset_muat_ulang') }}">
+    <button class="tombol" type="submit">
+      <svg class="ikon" aria-hidden="true"><use href="#i-refresh"></use></svg>
+      Muat Ulang Encoding
+    </button>
+  </form>
+</header>
+
+<section class="dataset-grid">
+  <div class="dataset-kiri">
+    <article class="panel">
+      <header class="panel-kepala">
+        <div>
+          <h2>Tambah orang baru</h2>
+          <p>Unggah foto wajah yang jelas</p>
+        </div>
+        <span class="ikon-bulat"><svg class="ikon" aria-hidden="true"><use href="#i-plus"></use></svg></span>
+      </header>
+
+      <form method="post" action="{{ url_for('dataset_tambah') }}" enctype="multipart/form-data" class="form-tambah" id="form-tambah">
+        <label for="nama">Nama lengkap</label>
+        <input id="nama" name="nama" required placeholder="Contoh: Budi Santoso" maxlength="40" autocomplete="off">
+
+        <label>Foto wajah</label>
+        <label class="dropzone" id="dropzone" for="foto">
+          <input id="foto" name="foto" type="file" accept="image/*" multiple required>
+          <span class="dropzone-ikon"><svg class="ikon" aria-hidden="true"><use href="#i-upload"></use></svg></span>
+          <strong>Klik atau seret foto ke sini</strong>
+          <small>JPG, PNG, WEBP &middot; bisa lebih dari satu</small>
+        </label>
+        <div class="pratinjau-file" id="pratinjau-file"></div>
+        <p class="bantuan">Disarankan 5&ndash;15 foto dengan variasi sudut, ekspresi, dan pencahayaan.</p>
+
+        <button class="tombol utama lebar" type="submit">
+          <svg class="ikon" aria-hidden="true"><use href="#i-upload"></use></svg>
+          Simpan ke Dataset
+        </button>
+      </form>
+    </article>
+
+    <article class="panel">
+      <header class="panel-kepala">
+        <div>
+          <h2>Ambil dari kamera</h2>
+          <p>Rekam langsung tanpa upload</p>
+        </div>
+        <span class="ikon-bulat"><svg class="ikon" aria-hidden="true"><use href="#i-video"></use></svg></span>
+      </header>
+
+      <div class="form-kamera">
+        <label for="kamera-nama">Pilih orang</label>
+        <select id="kamera-nama">
+          {% for n in daftar_nama %}
+            <option value="{{ n }}">{{ n }}</option>
+          {% endfor %}
+          <option value="__baru__">+ Nama baru...</option>
+        </select>
+        <input id="kamera-nama-baru" class="tersembunyi" placeholder="Tulis nama baru" maxlength="40">
+
+        <button class="tombol lebar" type="button" id="tombol-pratinjau" onclick="mulaiPratinjau()">
+          <svg class="ikon" aria-hidden="true"><use href="#i-video"></use></svg>
+          Nyalakan Kamera
+        </button>
+
+        <div id="pratinjau" class="pratinjau-kamera tersembunyi">
+          <img id="gambar-kamera" alt="Pratinjau kamera">
+          <span class="pratinjau-live"><span class="titik-live"></span>Live</span>
+          <div class="pratinjau-aksi">
+            <button class="tombol utama" type="button" onclick="tangkapFoto()">
+              <svg class="ikon" aria-hidden="true"><use href="#i-camera"></use></svg>
+              Ambil Foto
+            </button>
+            <button class="tombol" type="button" onclick="hentikanPratinjau()">Tutup</button>
+          </div>
+        </div>
+        <p id="status-tangkap" class="bantuan" role="status"></p>
+      </div>
+    </article>
+  </div>
+
+  <article class="panel panel-dataset">
+    <header class="panel-kepala">
+      <div>
+        <h2>Orang terdaftar</h2>
+        <p>{{ orang|length }} orang di dataset lokal</p>
+      </div>
+      <label class="cari-mini">
+        <svg class="ikon" aria-hidden="true"><use href="#i-search"></use></svg>
+        <input id="cari-orang" type="search" placeholder="Cari orang..." autocomplete="off">
+      </label>
+    </header>
+
+    {% if orang %}
+      <div class="grid-orang" id="grid-orang">
+        {% for o in orang %}
+          <article class="kartu-orang" data-nama="{{ o.nama|lower }}">
+            <div class="kartu-foto">
+              {% if o.cover %}
+                <img src="{{ url_for('serve_foto', nama=o.nama, nama_file=o.cover|basename) }}" alt="Foto {{ o.nama }}" loading="lazy">
+              {% else %}
+                <span class="foto-inisial">{{ o.nama[:2]|upper }}</span>
+              {% endif %}
+              <span class="pil-foto">{{ o.jumlah_foto }} foto</span>
+            </div>
+            <div class="kartu-orang-isi">
+              <h3>{{ o.nama }}</h3>
+              <p>Wajah terdaftar &middot; {{ o.foto|length }} file</p>
+
+              <details class="detail-foto">
+                <summary>Lihat foto ({{ o.foto|length }})</summary>
+                <div class="galeri-mini">
+                  {% for f in o.foto %}
+                    <span class="chip" title="{{ f|basename }}">
+                      <span>{{ f|basename }}</span>
+                      <form method="post" action="{{ url_for('dataset_hapus_foto') }}"
+                            data-konfirmasi="Hapus foto ini dari dataset {{ o.nama }}?">
+                        <input type="hidden" name="nama" value="{{ o.nama }}">
+                        <input type="hidden" name="file" value="{{ f|basename }}">
+                        <button type="submit" title="Hapus foto" aria-label="Hapus foto">&times;</button>
+                      </form>
+                    </span>
+                  {% endfor %}
+                </div>
+              </details>
+
+              <form method="post" action="{{ url_for('dataset_hapus_orang') }}"
+                    data-konfirmasi="Hapus semua data &quot;{{ o.nama }}&quot; dari dataset?">
+                <input type="hidden" name="nama" value="{{ o.nama }}">
+                <button class="tombol bahaya kecil lebar" type="submit">
+                  <svg class="ikon" aria-hidden="true"><use href="#i-trash"></use></svg>
+                  Hapus dari dataset
+                </button>
+              </form>
+            </div>
+          </article>
+        {% endfor %}
+      </div>
+      <div class="kosong-besar" id="orang-kosong" hidden>
+        <span class="kosong-ikon"><svg class="ikon" aria-hidden="true"><use href="#i-search"></use></svg></span>
+        <h3>Tidak ditemukan</h3>
+        <p>Tidak ada nama yang cocok dengan pencarian.</p>
+      </div>
+    {% else %}
+      <div class="kosong-besar">
+        <span class="kosong-ikon"><svg class="ikon" aria-hidden="true"><use href="#i-users"></use></svg></span>
+        <h3>Dataset masih kosong</h3>
+        <p>Tambahkan orang pertama lewat formulir di samping.</p>
+      </div>
+    {% endif %}
+  </article>
+</section>
+{% endblock %}
+
+{% block skrip %}
+<script>
+const inputFoto = document.getElementById('foto');
+const dropzone = document.getElementById('dropzone');
+const pratinjauFile = document.getElementById('pratinjau-file');
+let urlPratinjau = [];
+
+function tampilkanPratinjauFile() {
+  if (!inputFoto || !pratinjauFile) return;
+  urlPratinjau.forEach(function (url) { URL.revokeObjectURL(url); });
+  urlPratinjau = [];
+  pratinjauFile.replaceChildren();
+  const berkas = Array.from(inputFoto.files || []);
+  if (!berkas.length) return;
+
+  const keterangan = document.createElement('p');
+  keterangan.className = 'bantuan';
+  keterangan.textContent = berkas.length + ' foto dipilih';
+  pratinjauFile.appendChild(keterangan);
+
+  const baris = document.createElement('div');
+  baris.className = 'pratinjau-baris';
+  berkas.slice(0, 8).forEach(function (file) {
+    const bingkai = document.createElement('span');
+    bingkai.className = 'pratinjau-item';
+    const gambar = document.createElement('img');
+    gambar.alt = file.name;
+    gambar.src = URL.createObjectURL(file);
+    urlPratinjau.push(gambar.src);
+    bingkai.appendChild(gambar);
+    baris.appendChild(bingkai);
+  });
+  if (berkas.length > 8) {
+    const sisa = document.createElement('span');
+    sisa.className = 'pratinjau-item sisa';
+    sisa.textContent = '+' + (berkas.length - 8);
+    baris.appendChild(sisa);
+  }
+  pratinjauFile.appendChild(baris);
+}
+
+if (inputFoto) inputFoto.addEventListener('change', tampilkanPratinjauFile);
+
+if (dropzone) {
+  ['dragenter', 'dragover'].forEach(function (nama) {
+    dropzone.addEventListener(nama, function (e) {
+      e.preventDefault();
+      dropzone.classList.add('seret');
+    });
+  });
+  ['dragleave', 'drop'].forEach(function (nama) {
+    dropzone.addEventListener(nama, function (e) {
+      e.preventDefault();
+      dropzone.classList.remove('seret');
+    });
+  });
+  dropzone.addEventListener('drop', function (e) {
+    const daftar = e.dataTransfer && e.dataTransfer.files;
+    if (!daftar || !daftar.length || !inputFoto || typeof DataTransfer === 'undefined') return;
+    const transfer = new DataTransfer();
+    Array.from(daftar).forEach(function (file) {
+      if (file.type && file.type.indexOf('image/') === 0) transfer.items.add(file);
+    });
+    if (transfer.files.length) {
+      inputFoto.files = transfer.files;
+      tampilkanPratinjauFile();
+    }
+  });
+}
+
+const pilihNama = document.getElementById('kamera-nama');
+const namaBaru = document.getElementById('kamera-nama-baru');
+
+function namaDipilih() {
+  if (!pilihNama) return '';
+  if (pilihNama.value === '__baru__') {
+    if (namaBaru) {
+      namaBaru.classList.remove('tersembunyi');
+      namaBaru.focus();
+      return namaBaru.value.trim();
+    }
+    return '';
+  }
+  if (namaBaru) namaBaru.classList.add('tersembunyi');
+  return pilihNama.value;
+}
+
+if (pilihNama) {
+  pilihNama.addEventListener('change', function () {
+    if (pilihNama.value === '__baru__' && namaBaru) {
+      namaBaru.classList.remove('tersembunyi');
+      namaBaru.focus();
+    } else if (namaBaru) {
+      namaBaru.classList.add('tersembunyi');
+    }
+  });
+  if (pilihNama.value === '__baru__' && namaBaru) {
+    namaBaru.classList.remove('tersembunyi');
+  }
+}
+
+function mulaiPratinjau() {
+  const img = document.getElementById('gambar-kamera');
+  const kotak = document.getElementById('pratinjau');
+  if (!img || !kotak) return;
+  img.src = '/api/pratinjau.mjpg?t=' + Date.now();
+  kotak.classList.remove('tersembunyi');
+  const tombol = document.getElementById('tombol-pratinjau');
+  if (tombol) tombol.textContent = 'Kamera menyala';
+}
+
+function hentikanPratinjau() {
+  const img = document.getElementById('gambar-kamera');
+  const kotak = document.getElementById('pratinjau');
+  if (img) img.removeAttribute('src');
+  if (kotak) kotak.classList.add('tersembunyi');
+  const tombol = document.getElementById('tombol-pratinjau');
+  if (tombol) tombol.innerHTML = '<svg class="ikon" aria-hidden="true"><use href="#i-video"></use></svg> Nyalakan Kamera';
+}
+
+async function tangkapFoto() {
+  const status = document.getElementById('status-tangkap');
+  const nama = namaDipilih();
+  if (!nama) {
+    if (status) status.textContent = 'Pilih nama atau tulis nama baru terlebih dahulu.';
+    return;
+  }
+  if (status) status.textContent = 'Menyimpan foto...';
+
+  const data = new FormData();
+  data.append('nama', nama);
+  try {
+    const jawab = await fetch('/api/tangkap', { method: 'POST', body: data });
+    const hasil = await jawab.json();
+    if (status) status.textContent = hasil.pesan;
+    tampilkanToast(hasil.pesan, hasil.ok ? 'success' : 'error');
+    if (hasil.ok) {
+      setTimeout(function () { window.location.reload(); }, 900);
+    }
+  } catch (e) {
+    if (status) status.textContent = 'Gagal menghubungi server.';
+    tampilkanToast('Gagal menghubungi server.', 'error');
+  }
+}
+
+const cariOrang = document.getElementById('cari-orang');
+const kartuOrang = Array.from(document.querySelectorAll('.kartu-orang'));
+const orangKosong = document.getElementById('orang-kosong');
+
+if (cariOrang) {
+  cariOrang.addEventListener('input', function () {
+    const kata = cariOrang.value.trim().toLowerCase();
+    let tampil = 0;
+    kartuOrang.forEach(function (kartu) {
+      const cocok = !kata || (kartu.dataset.nama || '').includes(kata);
+      kartu.hidden = !cocok;
+      if (cocok) tampil++;
+    });
+    if (orangKosong) orangKosong.hidden = tampil > 0;
+  });
+}
+</script>
+{% endblock %}

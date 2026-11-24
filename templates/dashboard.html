@@ -1,0 +1,293 @@
+{% extends "base.html" %}
+{% block judul %}Dashboard - Absensi Wajah{% endblock %}
+{% block remah %}Dashboard{% endblock %}
+
+{% block konten %}
+<section class="hero">
+  <div class="hero-isi">
+    <span class="pil pil-sorot"><span class="titik-live"></span> Sistem pengenalan wajah siap</span>
+    <h1>Absensi lebih cepat,<br><span class="teks-gradien">tanpa sentuh.</span></h1>
+    <p>
+      Catat kehadiran hanya dengan wajah. Akurat, otomatis, dan langsung
+      tersimpan ke dalam rekap absensi.
+    </p>
+    <div class="hero-aksi">
+      <a class="tombol utama besar" href="{{ url_for('halaman_kamera', mulai=1) }}">
+        <svg class="ikon" aria-hidden="true"><use href="#i-play"></use></svg>
+        Mulai Absensi
+      </a>
+      <a class="tombol kaca besar" href="{{ url_for('halaman_dataset') }}">
+        <svg class="ikon" aria-hidden="true"><use href="#i-users"></use></svg>
+        Kelola Dataset
+      </a>
+    </div>
+    <div class="hero-catatan">
+      <span><svg class="ikon" aria-hidden="true"><use href="#i-check"></use></svg> 1x per hari</span>
+      <span><svg class="ikon" aria-hidden="true"><use href="#i-shield"></use></svg> Data lokal</span>
+      <span><svg class="ikon" aria-hidden="true"><use href="#i-activity"></use></svg> Deteksi real-time</span>
+    </div>
+  </div>
+
+  <div class="hero-stat">
+    <div class="cincin" style="--progres: {{ persen_hadir }}">
+      <div class="cincin-isi">
+        <strong>{{ persen_hadir }}%</strong>
+        <small>kehadiran</small>
+      </div>
+    </div>
+    <div class="hero-stat-teks">
+      <strong>{{ hadir_terdaftar }} dari {{ orang|length }}</strong>
+      <span>orang sudah absen hari ini</span>
+    </div>
+  </div>
+</section>
+
+<section class="stat-grid" aria-label="Statistik utama">
+  <article class="stat-kartu hijau">
+    <div class="stat-atas">
+      <span class="stat-ikon"><svg class="ikon" aria-hidden="true"><use href="#i-users"></use></svg></span>
+      <span class="stat-tren">Terdaftar</span>
+    </div>
+    <strong class="stat-angka">{{ orang|length }}</strong>
+    <span class="stat-label">Orang di dataset</span>
+    <small>Wajah siap dikenali</small>
+  </article>
+
+  <article class="stat-kartu sian">
+    <div class="stat-atas">
+      <span class="stat-ikon"><svg class="ikon" aria-hidden="true"><use href="#i-image"></use></svg></span>
+      <span class="stat-tren">Sample</span>
+    </div>
+    <strong class="stat-angka">{{ total_foto }}</strong>
+    <span class="stat-label">Foto wajah</span>
+    <small>Semakin banyak, semakin akurat</small>
+  </article>
+
+  <article class="stat-kartu kuning">
+    <div class="stat-atas">
+      <span class="stat-ikon"><svg class="ikon" aria-hidden="true"><use href="#i-check-circle"></use></svg></span>
+      <span class="stat-tren">Hari ini</span>
+    </div>
+    <strong class="stat-angka" id="stat-hadir">{{ stat.hadir_hari_ini }}</strong>
+    <span class="stat-label">Hadir hari ini</span>
+    <small>{{ stat.jumlah_orang_pernah_hadir }} orang pernah hadir</small>
+  </article>
+
+  <article class="stat-kartu ungu">
+    <div class="stat-atas">
+      <span class="stat-ikon"><svg class="ikon" aria-hidden="true"><use href="#i-clipboard"></use></svg></span>
+      <span class="stat-tren">Total</span>
+    </div>
+    <strong class="stat-angka" id="stat-total">{{ stat.total_catatan }}</strong>
+    <span class="stat-label">Catatan absensi</span>
+    <small>Tersimpan di CSV lokal</small>
+  </article>
+</section>
+
+<section class="grid-dua">
+  <article class="panel">
+    <header class="panel-kepala">
+      <div>
+        <h2>Kehadiran hari ini</h2>
+        <p>{{ waktu.strftime('%d %B %Y') }}</p>
+      </div>
+      <a class="tautan-kecil" href="{{ url_for('halaman_absensi', tanggal=stat.hari_ini) }}">
+        Lihat rekap <svg class="ikon" aria-hidden="true"><use href="#i-chevron"></use></svg>
+      </a>
+    </header>
+
+    {% if hadir_hari_ini %}
+      <ul class="daftar-hadir" id="daftar-hadir">
+        {% for r in hadir_hari_ini %}
+          <li>
+            <span class="avatar avatar-hijau">{{ r.nama[:1] }}</span>
+            <span class="hadir-info">
+              <strong>{{ r.nama }}</strong>
+              <small>Wajah terverifikasi</small>
+            </span>
+            <span class="waktu-pil">
+              <svg class="ikon" aria-hidden="true"><use href="#i-clock"></use></svg>
+              {{ r.waktu[:5] }}
+            </span>
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <div class="kosong-besar">
+        <span class="kosong-ikon"><svg class="ikon" aria-hidden="true"><use href="#i-scan"></use></svg></span>
+        <h3>Belum ada kehadiran hari ini</h3>
+        <p>Nyalakan kamera dan arahkan wajah ke kamera untuk mulai mencatat absensi.</p>
+        <a class="tombol utama" href="{{ url_for('halaman_kamera', mulai=1) }}">
+          <svg class="ikon" aria-hidden="true"><use href="#i-play"></use></svg>
+          Mulai sekarang
+        </a>
+      </div>
+    {% endif %}
+  </article>
+
+  <article class="panel panel-kejadian">
+    <header class="panel-kepala">
+      <div>
+        <h2>Log kejadian</h2>
+        <p>Pembaruan otomatis</p>
+      </div>
+      <span class="pil-live"><span class="titik-live"></span>Live</span>
+    </header>
+    <ul class="kejadian" id="kejadian" data-kosong="Belum ada kejadian.">
+      {% for k in kejadian %}
+        <li>
+          <span class="kejadian-titik"></span>
+          <div class="kejadian-isi">
+            <strong>{{ k.pesan }}</strong>
+            <small>{{ k.waktu }}</small>
+          </div>
+        </li>
+      {% else %}
+        <li class="kosong">Belum ada kejadian. Buka halaman Absensi Langsung untuk mulai absen.</li>
+      {% endfor %}
+    </ul>
+  </article>
+</section>
+
+<section class="panel">
+  <header class="panel-kepala">
+    <div>
+      <h2>Anggota dataset</h2>
+      <p>Semua wajah yang sudah terdaftar di sistem</p>
+    </div>
+    <div class="alat-tabel">
+      <label class="cari-mini">
+        <svg class="ikon" aria-hidden="true"><use href="#i-search"></use></svg>
+        <input id="cari-anggota" type="search" placeholder="Cari nama..." autocomplete="off">
+      </label>
+      <a class="tombol kecil" href="{{ url_for('halaman_dataset') }}">
+        <svg class="ikon" aria-hidden="true"><use href="#i-plus"></use></svg>
+        Tambah
+      </a>
+    </div>
+  </header>
+
+  {% if orang %}
+    <div class="tabel-gulir">
+      <table class="tabel-anggota">
+        <thead>
+          <tr>
+            <th>Anggota</th>
+            <th>Foto</th>
+            <th>Total hadir</th>
+            <th>Terakhir hadir</th>
+            <th>Status hari ini</th>
+          </tr>
+        </thead>
+        <tbody id="daftar-anggota">
+          {% for o in orang %}
+            <tr data-nama="{{ o.nama|lower }}">
+              <td>
+                <div class="sel-anggota">
+                  {% if o.cover %}
+                    <img class="avatar-foto" src="{{ url_for('serve_foto', nama=o.nama, nama_file=o.cover|basename) }}" alt="Foto {{ o.nama }}" loading="lazy">
+                  {% else %}
+                    <span class="avatar">{{ o.nama[:1] }}</span>
+                  {% endif %}
+                  <span class="sel-anggota-teks">
+                    <strong>{{ o.nama }}</strong>
+                    <small>{{ o.jumlah_foto }} foto terdaftar</small>
+                  </span>
+                </div>
+              </td>
+              <td><span class="pil pil-netral">{{ o.jumlah_foto }} foto</span></td>
+              <td><strong>{{ o.total_hadir }}</strong>x</td>
+              <td class="teks-lembut">{{ o.terakhir_hadir }}</td>
+              <td>
+                {% if o.nama|upper in nama_hadir_hari_ini %}
+                  <span class="pil pil-hadir"><span class="titik-live"></span>Hadir</span>
+                {% else %}
+                  <span class="pil pil-belum">Belum</span>
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <p class="kosong tabel-kosong" id="anggota-kosong" hidden>Tidak ada anggota yang cocok dengan pencarian.</p>
+  {% else %}
+    <div class="kosong-besar">
+      <span class="kosong-ikon"><svg class="ikon" aria-hidden="true"><use href="#i-users"></use></svg></span>
+      <h3>Dataset masih kosong</h3>
+      <p>Tambahkan foto wajah terlebih dahulu agar sistem bisa mengenali orang.</p>
+      <a class="tombol utama" href="{{ url_for('halaman_dataset') }}">
+        <svg class="ikon" aria-hidden="true"><use href="#i-plus"></use></svg>
+        Tambah wajah pertama
+      </a>
+    </div>
+  {% endif %}
+</section>
+{% endblock %}
+
+{% block skrip %}
+<script>
+(function () {
+  const cari = document.getElementById('cari-anggota');
+  const baris = Array.from(document.querySelectorAll('#daftar-anggota tr'));
+  const kosong = document.getElementById('anggota-kosong');
+
+  if (cari) {
+    cari.addEventListener('input', function () {
+      const kata = cari.value.trim().toLowerCase();
+      let tampil = 0;
+      baris.forEach(function (tr) {
+        const cocok = !kata || (tr.dataset.nama || '').includes(kata);
+        tr.hidden = !cocok;
+        if (cocok) tampil++;
+      });
+      if (kosong) kosong.hidden = tampil > 0;
+    });
+  }
+
+  function itemKejadian(k) {
+    const li = document.createElement('li');
+    const titik = document.createElement('span');
+    titik.className = 'kejadian-titik';
+    const isi = document.createElement('div');
+    isi.className = 'kejadian-isi';
+    const pesan = document.createElement('strong');
+    pesan.textContent = k.pesan;
+    const jam = document.createElement('small');
+    jam.textContent = k.waktu;
+    isi.append(pesan, jam);
+    li.append(titik, isi);
+    return li;
+  }
+
+  async function segarkan() {
+    try {
+      const data = await (await fetch('/api/status?t=' + Date.now())).json();
+      const daftar = document.getElementById('kejadian');
+      if (daftar) {
+        daftar.replaceChildren();
+        if (data.kejadian && data.kejadian.length) {
+          data.kejadian.forEach(function (k) { daftar.appendChild(itemKejadian(k)); });
+        } else {
+          const li = document.createElement('li');
+          li.className = 'kosong';
+          li.textContent = daftar.dataset.kosong || 'Belum ada kejadian.';
+          daftar.appendChild(li);
+        }
+      }
+      const hadir = document.getElementById('stat-hadir');
+      const total = document.getElementById('stat-total');
+      if (hadir) hadir.textContent = data.hadir_hari_ini;
+      if (total) total.textContent = data.total_catatan;
+      if (window.aturStatusKameraSisi) {
+        window.aturStatusKameraSisi(data.kamera_aktif, data.jumlah_encoding);
+      }
+    } catch (e) {
+      /* Server sedang sibuk; coba lagi pada interval berikutnya. */
+    }
+  }
+
+  setInterval(segarkan, 5000);
+})();
+</script>
+{% endblock %}
