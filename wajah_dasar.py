@@ -278,6 +278,7 @@ class GaleriWajah:
 
     def __init__(self):
         self._encoding = []
+        self._matrix = None
         self._nama = []
         self._dimuat = False
 
@@ -302,12 +303,16 @@ class GaleriWajah:
             return self
 
         siapkan_folder_dataset()
-        self._encoding, self._nama, _ = muat_dataset(cetak_laporan=cetak_laporan)
+        encoding, nama, _ = muat_dataset(cetak_laporan=cetak_laporan)
+        self._encoding = encoding
+        self._nama = nama
+        self._matrix = np.asarray(encoding, dtype=np.float64) if encoding else None
         self._dimuat = True
         return self
 
     def kosongkan(self):
         self._encoding = []
+        self._matrix = None
         self._nama = []
         self._dimuat = False
 
@@ -316,9 +321,9 @@ class GaleriWajah:
 
     def cari(self, encoding_wajah, toleransi=AMBANG_KECOCOKAN):
         """Mencari nama terdekat. Mengembalikan (nama, jarak) atau (None, None)."""
-        if not self._encoding:
+        if encoding_wajah is None or self._matrix is None or len(self._matrix) == 0:
             return None, None
-        jarak = face_recognition.face_distance(self._encoding, encoding_wajah)
+        jarak = np.linalg.norm(self._matrix - encoding_wajah, axis=1)
         if len(jarak) == 0:
             return None, None
         index = int(np.argmin(jarak))

@@ -102,6 +102,10 @@ cek("hapus traversal -> 404", "post", "/dataset/foto/hapus",
 
 print("\n--- API ---")
 cek("status", "get", "/api/status")
+cek("deteksi tanpa frame -> 400", "post", "/api/deteksi", data={}, diharapkan=400)
+cek("deteksi frame kosong -> 400", "post", "/api/deteksi",
+    data={"frame": (io.BytesIO(b""), "kosong.jpg")},
+    content_type="multipart/form-data", diharapkan=400)
 cek("tangkap tanpa nama -> 400", "post", "/api/tangkap", data={}, diharapkan=400)
 cek("tangkap tanpa kamera -> 503", "post", "/api/tangkap",
     data={"nama": "Uji Kamera"}, diharapkan=503)
@@ -175,6 +179,34 @@ if contoh:
         else:
             print(f"GAGAL   frame tanpa wajah                 {hasil_kosong}")
             gagal.append("tanpa false positive")
+
+        # Endpoint /api/deteksi (frame tanpa wajah & frame dengan wajah)
+        resp_kosong = cek("api deteksi frame kosong", "post", "/api/deteksi",
+                          data={"frame": bytes_gambar(np.full((240, 320, 3), 40, np.uint8)), "tandai": "0"},
+                          content_type="multipart/form-data")
+        if resp_kosong is not None:
+            json_kosong = resp_kosong.get_json() or {}
+            if json_kosong.get("ok") and json_kosong.get("wajah") == []:
+                print("LULUS   api deteksi tanpa wajah           ok=True, wajah=[]")
+                lulus.append("api deteksi tanpa wajah")
+            else:
+                print(f"GAGAL   api deteksi tanpa wajah           {json_kosong}")
+                gagal.append("api deteksi tanpa wajah")
+
+        with open(contoh["cover"], "rb") as f:
+            data_wajah_deteksi = f.read()
+        resp_wajah = cek("api deteksi wajah dikenal", "post", "/api/deteksi",
+                         data={"frame": (io.BytesIO(data_wajah_deteksi), "wajah.jpg"), "tandai": "0"},
+                         content_type="multipart/form-data")
+        if resp_wajah is not None:
+            json_wajah = resp_wajah.get_json() or {}
+            wajah_list = json_wajah.get("wajah") or []
+            if json_wajah.get("ok") and any(w.get("dikenal") for w in wajah_list):
+                print(f"LULUS   api deteksi wajah dikenal         {[w.get('nama') for w in wajah_list]}")
+                lulus.append("api deteksi wajah dikenal")
+            else:
+                print(f"GAGAL   api deteksi wajah dikenal         {json_wajah}")
+                gagal.append("api deteksi wajah dikenal")
 
         # Pencatatan otomatis saat wajah dikenali
         awal = len(webui.pencatat.baca_semua())

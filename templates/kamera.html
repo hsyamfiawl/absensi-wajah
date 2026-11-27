@@ -3,24 +3,27 @@
 {% block remah %}Absensi Langsung{% endblock %}
 
 {% block konten %}
-<header class="judul-halaman">
+<header class="judul-halaman" data-reveal>
   <div>
-    <span class="eyebrow">Kamera real-time</span>
+    <span class="eyebrow">Pemindaian Biometrik Real-Time</span>
     <h1>Absensi Langsung</h1>
-    <p class="sub">Arahkan wajah ke kamera. Kehadiran tercatat otomatis satu kali per hari.</p>
+    <p class="sub">Streaming video native high-FPS dengan deteksi wajah asinkron tanpa jeda.</p>
   </div>
   <div class="grup-tombol">
     <span class="pil {{ 'pil-hadir' if kamera_aktif else 'pil-belum' }}" id="status-kamera-pil">
       <span class="{{ 'titik-live' if kamera_aktif else 'titik-mati' }}"></span>
-      {{ 'Kamera aktif' if kamera_aktif else 'Kamera standby' }}
+      <span id="status-kamera-teks">{{ 'Kamera aktif' if kamera_aktif else 'Kamera standby' }}</span>
     </span>
   </div>
 </header>
 
 <section class="kamera-grid">
-  <article class="panel kamera-panel">
-    <div class="bingkai-kamera" id="bingkai-kamera">
-      <img id="stream" alt="Streaming kamera absensi">
+  <article class="panel kamera-panel" data-reveal style="--reveal-delay: 60ms">
+    <div class="bingkai-kamera" id="bingkai-kamera" data-state="standby">
+      <video id="kamera-video" class="video-kamera cermin" autoplay playsinline muted></video>
+      <img id="stream" alt="Streaming kamera absensi" hidden>
+      <canvas id="overlay-wajah" class="canvas-overlay" aria-hidden="true"></canvas>
+
       <div class="overlay-kamera">
         <span class="sudut kiri-atas"></span>
         <span class="sudut kanan-atas"></span>
@@ -28,18 +31,47 @@
         <span class="sudut kanan-bawah"></span>
 
         <div class="kamera-atas">
-          <span class="pil-live" id="label-live"><span class="titik-live"></span>Live</span>
-          <span class="kamera-resolusi" id="info-kamera">{{ jumlah_encoding }} encoding</span>
+          <div class="kamera-atas-kiri">
+            <span class="pil-live" id="label-live">
+              <span class="titik-live"></span>
+              <span id="label-live-teks">Standby</span>
+            </span>
+            <span class="kamera-resolusi" id="info-fps" title="Kecepatan render video &amp; latensi deteksi">
+              -- FPS
+            </span>
+          </div>
+          <div class="kamera-atas-kanan">
+            <span class="kamera-resolusi" id="info-kamera">{{ jumlah_encoding }} encoding</span>
+          </div>
         </div>
 
-        <div class="pemindai" id="pemindai" aria-hidden="true"></div>
+        <div class="pemindai" id="pemindai" aria-hidden="true">
+          <span class="pemindai-sudut"></span>
+        </div>
+
+        <div class="ceklist-sukses" id="ceklist-sukses" aria-hidden="true">
+          <div class="ceklist-kartu">
+            <span class="ceklist-lingkar">
+              <svg viewBox="0 0 36 36" class="ceklist-svg">
+                <circle class="ceklist-track" cx="18" cy="18" r="15"></circle>
+                <path class="ceklist-centang" d="M11 18.5 16 23.5 25.5 13"></path>
+              </svg>
+            </span>
+            <div class="ceklist-teks">
+              <small>Absensi Berhasil</small>
+              <strong id="ceklist-nama">TERCATAT</strong>
+              <span id="ceklist-waktu">--:--:--</span>
+            </div>
+          </div>
+        </div>
 
         <div class="placeholder-kamera" id="petunjuk">
+          <div class="placeholder-halo" aria-hidden="true"></div>
           <span class="placeholder-ikon">
             <svg class="ikon" aria-hidden="true"><use href="#i-scan"></use></svg>
           </span>
-          <h2>Kamera belum dinyalakan</h2>
-          <p>Klik tombol di bawah untuk memulai absensi wajah.</p>
+          <h2>Kamera siap memindai</h2>
+          <p>Aktifkan kamera untuk memulai pengenalan wajah mulus pada 30/60 FPS.</p>
           <button class="tombol utama besar" type="button" onclick="nyalakan()">
             <svg class="ikon" aria-hidden="true"><use href="#i-play"></use></svg>
             Nyalakan Kamera
@@ -47,8 +79,14 @@
         </div>
 
         <div class="kamera-bawah">
-          <span><span class="kotak-warna hijau"></span>Dikenal</span>
-          <span><span class="kotak-warna merah"></span>Tidak dikenal</span>
+          <div class="status-deteksi-hud" id="hud-status" role="status" aria-live="polite">
+            <span class="hud-titik"></span>
+            <span id="hud-status-teks">Menunggu kamera diaktifkan</span>
+          </div>
+          <div class="legenda-kamera">
+            <span><span class="kotak-warna hijau"></span>Dikenal</span>
+            <span><span class="kotak-warna merah"></span>Tidak dikenal</span>
+          </div>
         </div>
       </div>
     </div>
@@ -56,29 +94,42 @@
     <div class="kontrol-kamera">
       <button class="tombol utama" type="button" id="tombol-nyalakan" onclick="nyalakan()">
         <svg class="ikon" aria-hidden="true"><use href="#i-play"></use></svg>
-        Nyalakan
+        <span>Nyalakan</span>
       </button>
-      <button class="tombol" type="button" onclick="matikan()">
+      <button class="tombol" type="button" id="tombol-matikan" onclick="matikan()" disabled>
         <svg class="ikon" aria-hidden="true"><use href="#i-stop"></use></svg>
-        Hentikan
+        <span>Hentikan</span>
       </button>
       <button class="tombol" type="button" onclick="restartKamera()">
         <svg class="ikon" aria-hidden="true"><use href="#i-refresh"></use></svg>
-        Restart
+        <span>Restart</span>
+      </button>
+      <button class="tombol" type="button" id="tombol-mirror" onclick="toggleMirror()" aria-pressed="true" title="Balik tampilan horizontal">
+        <svg class="ikon" aria-hidden="true"><use href="#i-flip"></use></svg>
+        <span>Mirror</span>
+      </button>
+      <button class="tombol" type="button" id="tombol-suara" onclick="toggleSuara()" aria-pressed="true" title="Aktifkan/matikan suara notifikasi">
+        <svg class="ikon" id="ikon-suara" aria-hidden="true"><use href="#i-volume"></use></svg>
+        <span id="teks-suara">Suara</span>
       </button>
       <button class="tombol" type="button" onclick="layarPenuh()">
         <svg class="ikon" aria-hidden="true"><use href="#i-maximize"></use></svg>
-        Layar Penuh
+        <span>Layar Penuh</span>
       </button>
+
+      <div class="pilih-kamera-wrap tersembunyi" id="wrap-pilih-kamera">
+        <select id="pilih-kamera" aria-label="Pilih perangkat kamera"></select>
+      </div>
+
       <span class="kontrol-info">
-        <svg class="ikon" aria-hidden="true"><use href="#i-info"></use></svg>
-        Pencahayaan cukup &amp; wajah menghadap kamera
+        <svg class="ikon" aria-hidden="true"><use href="#i-bolt"></use></svg>
+        <span id="info-pipa">Native Video + AI 300ms</span>
       </span>
     </div>
   </article>
 
   <aside class="kolom-kamera">
-    <article class="panel ringkasan-hadir">
+    <article class="panel ringkasan-hadir" data-reveal style="--reveal-delay: 120ms">
       <div class="ringkasan-angka">
         <span class="ringkasan-ikon"><svg class="ikon" aria-hidden="true"><use href="#i-check-circle"></use></svg></span>
         <div>
@@ -91,21 +142,25 @@
         <strong id="s-orang">{{ daftar_nama|length }}</strong>
       </div>
       <div class="ringkasan-baris">
-        <span>Foto dataset</span>
+        <span>Encoding dataset</span>
         <strong id="s-foto">{{ jumlah_encoding }}</strong>
       </div>
       <div class="ringkasan-baris">
         <span>Total catatan</span>
         <strong id="s-total">-</strong>
       </div>
+      <div class="ringkasan-baris">
+        <span>Mode stream</span>
+        <strong id="s-mode">Standby</strong>
+      </div>
       <div class="ringkasan-status" id="s-kamera">Kamera siap dinyalakan</div>
     </article>
 
-    <article class="panel">
+    <article class="panel" data-reveal style="--reveal-delay: 180ms">
       <header class="panel-kepala">
         <div>
           <h2>Absen terbaru</h2>
-          <p>Langsung dari kamera</p>
+          <p>Diperbarui real-time</p>
         </div>
         <span class="pil-live"><span class="titik-live"></span>Live</span>
       </header>
@@ -125,7 +180,7 @@
       </ul>
     </article>
 
-    <article class="panel">
+    <article class="panel" data-reveal style="--reveal-delay: 240ms">
       <header class="panel-kepala">
         <div>
           <h2>Log kejadian</h2>
@@ -152,177 +207,771 @@
 
 {% block skrip %}
 <script>
-let penghitung = null;
-let kameraMenyala = false;
+(function () {
+  'use strict';
 
-function elemen(id) { return document.getElementById(id); }
+  const INTERVAL_DETEKSI_MS = 300;
+  const LEBAR_PROSES_AI = 420;
+  const KUALITAS_JPEG = 0.72;
 
-function aturStatusKamera(aktif, galat) {
-  const pil = elemen('status-kamera-pil');
-  const info = elemen('s-kamera');
-  const label = elemen('label-live');
-  if (pil) {
-    pil.className = 'pil ' + (aktif ? 'pil-hadir' : 'pil-belum');
-    pil.innerHTML = '<span class="' + (aktif ? 'titik-live' : 'titik-mati') + '"></span>' +
-      (aktif ? 'Kamera aktif' : 'Kamera standby');
-  }
-  if (info) info.textContent = aktif ? 'Kamera berjalan' : (galat || 'Kamera siap dinyalakan');
-  if (label) label.style.opacity = aktif ? '1' : '.35';
-}
+  const videoEl = document.getElementById('kamera-video');
+  const imgFallback = document.getElementById('stream');
+  const canvasOverlay = document.getElementById('overlay-wajah');
+  const ctxOverlay = canvasOverlay ? canvasOverlay.getContext('2d') : null;
+  const bingkai = document.getElementById('bingkai-kamera');
+  const petunjuk = document.getElementById('petunjuk');
+  const pilihKamera = document.getElementById('pilih-kamera');
+  const wrapPilihKamera = document.getElementById('wrap-pilih-kamera');
 
-function nyalakan() {
-  const img = elemen('stream');
-  const petunjuk = elemen('petunjuk');
-  if (!img) return;
-  img.src = '/api/stream.mjpg?t=' + Date.now();
-  kameraMenyala = true;
-  if (petunjuk) petunjuk.classList.add('sembunyi');
-  elemen('bingkai-kamera').classList.add('aktif');
-  aturStatusKamera(true, '');
-  if (window.aturStatusKameraSisi) window.aturStatusKameraSisi(true);
-  mulaiPolling();
-}
+  // Offscreen canvas untuk downscaling ringan (tidak pernah masuk DOM)
+  const canvasProses = document.createElement('canvas');
+  const ctxProses = canvasProses.getContext('2d', { willReadFrequently: false });
 
-function matikan() {
-  const img = elemen('stream');
-  if (img) img.removeAttribute('src');
-  kameraMenyala = false;
-  const petunjuk = elemen('petunjuk');
-  if (petunjuk) petunjuk.classList.remove('sembunyi');
-  elemen('bingkai-kamera').classList.remove('aktif');
-  aturStatusKamera(false, '');
-  if (window.aturStatusKameraSisi) window.aturStatusKameraSisi(false);
-  if (penghitung) {
-    clearInterval(penghitung);
-    penghitung = null;
-  }
-}
+  let mediaStream = null;
+  let modeAktif = 'standby'; // 'webrtc' | 'mjpeg' | 'standby'
+  let kameraMenyala = false;
+  let sedangMenyalakan = false;
+  let isProcessing = false;
+  let timerDeteksi = null;
+  let timerPolling = null;
+  let timerSukses = null;
+  let kontrolerAbort = null;
+  let rafFps = null;
+  let jumlahFrameFps = 0;
+  let awalFps = performance.now();
+  let fpsTerukur = 0;
+  let latensiTerakhirMs = 0;
+  let kotakAktif = [];
+  let waktuKotakTerakhir = 0;
+  let cerminAktif = true;
+  let suaraAktif = true;
 
-async function restartKamera() {
-  const status = elemen('s-kamera');
-  if (status) status.textContent = 'Menyalakan ulang kamera...';
   try {
-    const jawab = await fetch('/api/kamera/restart', { method: 'POST' });
-    const hasil = await jawab.json();
-    if (!hasil.ok) {
-      tampilkanToast(hasil.pesan || 'Gagal menyalakan ulang kamera.', 'error');
-      if (status) status.textContent = hasil.pesan || 'Kamera gagal dinyalakan';
-    } else {
-      matikan();
-      setTimeout(nyalakan, 650);
+    const prefCermin = localStorage.getItem('kamera-cermin');
+    if (prefCermin === '0') cerminAktif = false;
+    const prefSuara = localStorage.getItem('kamera-suara');
+    if (prefSuara === '0') suaraAktif = false;
+  } catch (e) {}
+
+  function elemen(id) { return document.getElementById(id); }
+
+  function perbaruiTombolPreferensi() {
+    const btnMirror = elemen('tombol-mirror');
+    const btnSuara = elemen('tombol-suara');
+    const ikonSuara = elemen('ikon-suara');
+    const teksSuara = elemen('teks-suara');
+
+    if (videoEl) videoEl.classList.toggle('cermin', cerminAktif);
+    if (btnMirror) {
+      btnMirror.setAttribute('aria-pressed', cerminAktif ? 'true' : 'false');
+      btnMirror.classList.toggle('aktif-opsi', cerminAktif);
     }
-  } catch (e) {
-    tampilkanToast('Gagal menghubungi server.', 'error');
+    if (btnSuara) {
+      btnSuara.setAttribute('aria-pressed', suaraAktif ? 'true' : 'false');
+      btnSuara.classList.toggle('aktif-opsi', suaraAktif);
+    }
+    if (ikonSuara) {
+      ikonSuara.innerHTML = '<use href="#i-' + (suaraAktif ? 'volume' : 'volume-off') + '"></use>';
+    }
+    if (teksSuara) teksSuara.textContent = suaraAktif ? 'Suara On' : 'Bisukan';
   }
-}
+  perbaruiTombolPreferensi();
 
-function layarPenuh() {
-  const bingkai = elemen('bingkai-kamera');
-  if (!bingkai) return;
-  if (document.fullscreenElement) {
-    document.exitFullscreen();
-  } else if (bingkai.requestFullscreen) {
-    bingkai.requestFullscreen();
+  window.toggleMirror = function () {
+    cerminAktif = !cerminAktif;
+    try { localStorage.setItem('kamera-cermin', cerminAktif ? '1' : '0'); } catch (e) {}
+    perbaruiTombolPreferensi();
+    gambarOverlayWajah();
+  };
+
+  window.toggleSuara = function () {
+    suaraAktif = !suaraAktif;
+    try { localStorage.setItem('kamera-suara', suaraAktif ? '1' : '0'); } catch (e) {}
+    perbaruiTombolPreferensi();
+    if (suaraAktif && window.bunyikanChime) window.bunyikanChime('deteksi');
+  };
+
+  function aturStatusHud(state, teks) {
+    if (bingkai) bingkai.setAttribute('data-state', state);
+    const hudTeks = elemen('hud-status-teks');
+    if (hudTeks && teks) hudTeks.textContent = teks;
   }
-}
 
-function itemHadir(r) {
-  const li = document.createElement('li');
-  const avatar = document.createElement('span');
-  avatar.className = 'avatar avatar-hijau';
-  avatar.textContent = (r.nama || '?').slice(0, 1);
-  const info = document.createElement('span');
-  info.className = 'hadir-info';
-  const nama = document.createElement('strong');
-  nama.textContent = r.nama;
-  const ket = document.createElement('small');
-  ket.textContent = 'Terverifikasi';
-  info.append(nama, ket);
-  const waktu = document.createElement('span');
-  waktu.className = 'waktu-pil';
-  waktu.textContent = (r.waktu || '').slice(0, 5);
-  li.append(avatar, info, waktu);
-  return li;
-}
+  function aturStatusKamera(aktif, galat) {
+    const pil = elemen('status-kamera-pil');
+    const pilTeks = elemen('status-kamera-teks');
+    const info = elemen('s-kamera');
+    const label = elemen('label-live');
+    const labelTeks = elemen('label-live-teks');
+    const btnMulai = elemen('tombol-nyalakan');
+    const btnHenti = elemen('tombol-matikan');
 
-function itemKejadian(k) {
-  const li = document.createElement('li');
-  const titik = document.createElement('span');
-  titik.className = 'kejadian-titik';
-  const isi = document.createElement('div');
-  isi.className = 'kejadian-isi';
-  const pesan = document.createElement('strong');
-  pesan.textContent = k.pesan;
-  const jam = document.createElement('small');
-  jam.textContent = k.waktu;
-  isi.append(pesan, jam);
-  li.append(titik, isi);
-  return li;
-}
-
-function isiDaftar(id, data, pembuat, teksKosong) {
-  const daftar = elemen(id);
-  if (!daftar) return;
-  daftar.replaceChildren();
-  if (data && data.length) {
-    data.forEach(function (item) { daftar.appendChild(pembuat(item)); });
-  } else {
-    const li = document.createElement('li');
-    li.className = 'kosong';
-    li.textContent = teksKosong;
-    daftar.appendChild(li);
+    if (pil) {
+      pil.className = 'pil ' + (aktif ? 'pil-hadir' : 'pil-belum');
+      const titik = pil.querySelector('span');
+      if (titik) titik.className = aktif ? 'titik-live' : 'titik-mati';
+    }
+    if (pilTeks) pilTeks.textContent = aktif ? 'Kamera aktif' : 'Kamera standby';
+    if (info) info.textContent = aktif ? 'Pemindaian berjalan lancar' : (galat || 'Kamera siap dinyalakan');
+    if (label) label.classList.toggle('hidup', aktif);
+    if (labelTeks) labelTeks.textContent = aktif ? 'Live' : 'Standby';
+    if (btnMulai) btnMulai.disabled = aktif;
+    if (btnHenti) btnHenti.disabled = !aktif;
   }
-}
 
-function mulaiPolling() {
-  if (penghitung) return;
-  const segarkan = async function () {
-    try {
-      const data = await (await fetch('/api/status?t=' + Date.now())).json();
-      elemen('s-kamera').textContent = data.kamera_aktif
-        ? 'Kamera aktif (indeks ' + data.kamera_indeks + ')'
-        : (data.kamera_galat || 'Kamera standby');
-      elemen('s-orang').textContent = data.jumlah_orang;
+  function sesuaikanUkuranCanvas() {
+    if (!canvasOverlay || !bingkai) return;
+    const rect = bingkai.getBoundingClientRect();
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const targetW = Math.max(1, Math.round(rect.width * dpr));
+    const targetH = Math.max(1, Math.round(rect.height * dpr));
+    if (canvasOverlay.width !== targetW || canvasOverlay.height !== targetH) {
+      canvasOverlay.width = targetW;
+      canvasOverlay.height = targetH;
+    }
+    gambarOverlayWajah();
+  }
+
+  if (bingkai && typeof ResizeObserver !== 'undefined') {
+    new ResizeObserver(sesuaikanUkuranCanvas).observe(bingkai);
+  }
+  window.addEventListener('resize', sesuaikanUkuranCanvas);
+
+  function hitungAreaVideoDalamBingkai(canvasW, canvasH) {
+    const vw = videoEl && videoEl.videoWidth ? videoEl.videoWidth : 16;
+    const vh = videoEl && videoEl.videoHeight ? videoEl.videoHeight : 10;
+    const rasioVideo = vw / vh;
+    const rasioKanvas = canvasW / canvasH;
+
+    let renderW, renderH, offsetX, offsetY;
+    if (rasioKanvas > rasioVideo) {
+      renderH = canvasH;
+      renderW = renderH * rasioVideo;
+      offsetX = (canvasW - renderW) / 2;
+      offsetY = 0;
+    } else {
+      renderW = canvasW;
+      renderH = renderW / rasioVideo;
+      offsetX = 0;
+      offsetY = (canvasH - renderH) / 2;
+    }
+    return { offsetX, offsetY, renderW, renderH };
+  }
+
+  function gambarRoundedRect(ctx, x, y, w, h, r) {
+    if (typeof ctx.roundRect === 'function') {
+      ctx.beginPath();
+      ctx.roundRect(x, y, w, h, r);
+      return;
+    }
+    const radius = Math.min(r, w / 2, h / 2);
+    ctx.beginPath();
+    ctx.moveTo(x + radius, y);
+    ctx.arcTo(x + w, y, x + w, y + h, radius);
+    ctx.arcTo(x + w, y + h, x, y + h, radius);
+    ctx.arcTo(x, y + h, x, y, radius);
+    ctx.arcTo(x, y, x + w, y, radius);
+    ctx.closePath();
+  }
+
+  function gambarKotakBerpeluru(ctx, x, y, w, h, radius, warna, warnaIsi, label, keyakinan) {
+    const r = Math.min(radius, w * 0.25, h * 0.25);
+    const p = Math.max(14, Math.min(28, w * 0.22));
+
+    ctx.save();
+    // Latar transparan halus
+    ctx.fillStyle = warnaIsi;
+    gambarRoundedRect(ctx, x, y, w, h, r);
+    ctx.fill();
+
+    // Garis luar tipis
+    ctx.strokeStyle = warnaIsi.replace(/[\d.]+\)$/, '0.45)');
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    // Corner brackets presisi
+    ctx.strokeStyle = warna;
+    ctx.lineWidth = 3;
+    ctx.lineCap = 'round';
+    ctx.shadowColor = warna;
+    ctx.shadowBlur = 12;
+
+    // Kiri atas
+    ctx.beginPath();
+    ctx.moveTo(x, y + p);
+    ctx.lineTo(x, y + r);
+    ctx.quadraticCurveTo(x, y, x + r, y);
+    ctx.lineTo(x + p, y);
+    ctx.stroke();
+
+    // Kanan atas
+    ctx.beginPath();
+    ctx.moveTo(x + w - p, y);
+    ctx.lineTo(x + w - r, y);
+    ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+    ctx.lineTo(x + w, y + p);
+    ctx.stroke();
+
+    // Kiri bawah
+    ctx.beginPath();
+    ctx.moveTo(x, y + h - p);
+    ctx.lineTo(x, y + h - r);
+    ctx.quadraticCurveTo(x, y + h, x + r, y + h);
+    ctx.lineTo(x + p, y + h);
+    ctx.stroke();
+
+    // Kanan bawah
+    ctx.beginPath();
+    ctx.moveTo(x + w - p, y + h);
+    ctx.lineTo(x + w - r, y + h);
+    ctx.quadraticCurveTo(x + w, y + h, x + w, y + h - r);
+    ctx.lineTo(x + w, y + h - p);
+    ctx.stroke();
+
+    // Label pill di atas kotak
+    ctx.shadowBlur = 0;
+    const teks = keyakinan !== null && keyakinan !== undefined
+      ? label + '  ' + keyakinan + '%'
+      : label;
+    ctx.font = '600 13px "Segoe UI", "Inter", system-ui, sans-serif';
+    const metrik = ctx.measureText(teks);
+    const padX = 11;
+    const pillW = Math.ceil(metrik.width + padX * 2);
+    const pillH = 26;
+    const pillX = Math.max(8, Math.min(x, ctx.canvas.width / (Math.min(window.devicePixelRatio || 1, 2)) - pillW - 8));
+    const pillY = y > pillH + 10 ? y - pillH - 8 : y + h + 8;
+
+    ctx.fillStyle = 'rgba(6, 11, 18, 0.84)';
+    gambarRoundedRect(ctx, pillX, pillY, pillW, pillH, 999);
+    ctx.fill();
+
+    ctx.strokeStyle = warna;
+    ctx.lineWidth = 1.2;
+    ctx.stroke();
+
+    ctx.fillStyle = '#f8fafc';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(teks, pillX + padX, pillY + pillH / 2 + 0.5);
+    ctx.restore();
+  }
+
+  function gambarOverlayWajah() {
+    if (!ctxOverlay || !canvasOverlay) return;
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const cssW = canvasOverlay.width / dpr;
+    const cssH = canvasOverlay.height / dpr;
+
+    ctxOverlay.save();
+    ctxOverlay.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctxOverlay.clearRect(0, 0, cssW, cssH);
+
+    if (!kameraMenyala || modeAktif !== 'webrtc' || !kotakAktif.length) {
+      ctxOverlay.restore();
+      return;
+    }
+
+    // Hapus otomatis kotak jika sudah terlalu lama tidak ada pembaruan
+    if (performance.now() - waktuKotakTerakhir > 1100) {
+      kotakAktif = [];
+      ctxOverlay.restore();
+      return;
+    }
+
+    const area = hitungAreaVideoDalamBingkai(cssW, cssH);
+    kotakAktif.forEach(function (w) {
+      const nx = cerminAktif ? (1 - w.nx - w.nw) : w.nx;
+      const x = area.offsetX + nx * area.renderW;
+      const y = area.offsetY + w.ny * area.renderH;
+      const lebar = w.nw * area.renderW;
+      const tinggi = w.nh * area.renderH;
+
+      const warna = w.dikenal ? '#34d399' : '#fb7185';
+      const isi = w.dikenal ? 'rgba(16, 185, 129, 0.08)' : 'rgba(251, 113, 133, 0.08)';
+      gambarKotakBerpeluru(ctxOverlay, x, y, lebar, tinggi, 12, warna, isi, w.nama, w.keyakinan);
+    });
+
+    ctxOverlay.restore();
+  }
+
+  function tampilkanCeklistSukses(nama, waktu) {
+    const kotak = elemen('ceklist-sukses');
+    const elNama = elemen('ceklist-nama');
+    const elWaktu = elemen('ceklist-waktu');
+    if (!kotak) return;
+
+    if (elNama) elNama.textContent = nama;
+    if (elWaktu) elWaktu.textContent = 'Tercatat pukul ' + (waktu || new Date().toLocaleTimeString('id-ID', { hour12: false }));
+
+    kotak.classList.remove('aktif');
+    void kotak.offsetWidth;
+    kotak.classList.add('aktif');
+    aturStatusHud('berhasil', 'Absensi Berhasil: ' + nama);
+
+    clearTimeout(timerSukses);
+    timerSukses = setTimeout(function () {
+      kotak.classList.remove('aktif');
+      if (kameraMenyala) {
+        aturStatusHud('memindai', 'Mendeteksi wajah...');
+      }
+    }, 2400);
+  }
+
+  function perbaruiPanelSamping(data) {
+    if (typeof data.jumlah_orang === 'number') elemen('s-orang').textContent = data.jumlah_orang;
+    if (typeof data.jumlah_encoding === 'number') {
       elemen('s-foto').textContent = data.jumlah_encoding;
-      elemen('s-hadir').textContent = data.hadir_hari_ini;
-      elemen('s-total').textContent = data.total_catatan;
       elemen('info-kamera').textContent = data.jumlah_encoding + ' encoding';
-      if (window.aturStatusKameraSisi) {
-        window.aturStatusKameraSisi(data.kamera_aktif, data.jumlah_encoding);
-      }
-
-      if (!data.kamera_aktif && kameraMenyala) {
-        aturStatusKamera(false, data.kamera_galat);
-      } else {
-        aturStatusKamera(data.kamera_aktif, data.kamera_galat);
-      }
-
+    }
+    if (typeof data.hadir_hari_ini === 'number') elemen('s-hadir').textContent = data.hadir_hari_ini;
+    if (typeof data.total_catatan === 'number') elemen('s-total').textContent = data.total_catatan;
+    if (window.aturStatusKameraSisi) {
+      window.aturStatusKameraSisi(kameraMenyala || data.kamera_aktif, data.jumlah_encoding);
+    }
+    if (Array.isArray(data.hari_ini)) {
       isiDaftar('daftar-hadir', data.hari_ini, itemHadir, 'Belum ada yang absen hari ini.');
+    }
+    if (Array.isArray(data.kejadian)) {
       isiDaftar('kejadian', data.kejadian, itemKejadian, 'Belum ada kejadian.');
+    }
+  }
+
+  function perbaruiTelemetryFps() {
+    const el = elemen('info-fps');
+    if (!el) return;
+    if (!kameraMenyala) {
+      el.textContent = '-- FPS';
+      return;
+    }
+    if (modeAktif === 'mjpeg') {
+      el.textContent = 'MJPEG Fallback';
+      return;
+    }
+    const fpsTeks = fpsTerukur > 0 ? fpsTerukur + ' FPS' : '30 FPS';
+    const msTeks = latensiTerakhirMs > 0 ? ' · ' + latensiTerakhirMs + 'ms AI' : '';
+    el.textContent = fpsTeks + msTeks;
+  }
+
+  function mulaiMonitorFps() {
+    if (rafFps) cancelAnimationFrame(rafFps);
+    jumlahFrameFps = 0;
+    awalFps = performance.now();
+
+    if (videoEl && typeof videoEl.requestVideoFrameCallback === 'function') {
+      const padaFrame = function () {
+        if (!kameraMenyala || modeAktif !== 'webrtc') return;
+        jumlahFrameFps++;
+        const sekarang = performance.now();
+        if (sekarang - awalFps >= 1000) {
+          fpsTerukur = Math.round((jumlahFrameFps * 1000) / (sekarang - awalFps));
+          jumlahFrameFps = 0;
+          awalFps = sekarang;
+          perbaruiTelemetryFps();
+        }
+        videoEl.requestVideoFrameCallback(padaFrame);
+      };
+      videoEl.requestVideoFrameCallback(padaFrame);
+      return;
+    }
+
+    const langkah = function (sekarang) {
+      if (!kameraMenyala || modeAktif !== 'webrtc') return;
+      jumlahFrameFps++;
+      if (sekarang - awalFps >= 1000) {
+        fpsTerukur = Math.round((jumlahFrameFps * 1000) / (sekarang - awalFps));
+        jumlahFrameFps = 0;
+        awalFps = sekarang;
+        perbaruiTelemetryFps();
+      }
+      rafFps = requestAnimationFrame(langkah);
+    };
+    rafFps = requestAnimationFrame(langkah);
+  }
+
+  async function jalankanSiklusDeteksi() {
+    if (!kameraMenyala || modeAktif !== 'webrtc' || isProcessing) return;
+    if (!videoEl || videoEl.readyState < 2 || videoEl.videoWidth === 0) return;
+
+    isProcessing = true;
+    try {
+      const vw = videoEl.videoWidth;
+      const vh = videoEl.videoHeight;
+      const targetW = Math.min(LEBAR_PROSES_AI, vw);
+      const targetH = Math.max(1, Math.round(vh * (targetW / vw)));
+
+      if (canvasProses.width !== targetW || canvasProses.height !== targetH) {
+        canvasProses.width = targetW;
+        canvasProses.height = targetH;
+      }
+
+      ctxProses.drawImage(videoEl, 0, 0, targetW, targetH);
+
+      const blob = await new Promise(function (resolve) {
+        canvasProses.toBlob(resolve, 'image/jpeg', KUALITAS_JPEG);
+      });
+      if (!blob || !kameraMenyala) return;
+
+      kontrolerAbort = new AbortController();
+      const form = new FormData();
+      form.append('frame', blob, 'frame.jpg');
+      form.append('tandai', '1');
+
+      const resp = await fetch('/api/deteksi', {
+        method: 'POST',
+        body: form,
+        signal: kontrolerAbort.signal
+      });
+      if (!resp.ok || !kameraMenyala) return;
+
+      const data = await resp.json();
+      if (!data.ok || !kameraMenyala) return;
+
+      latensiTerakhirMs = data.waktu_deteksi_ms || 0;
+      perbaruiTelemetryFps();
+
+      kotakAktif = data.wajah || [];
+      waktuKotakTerakhir = performance.now();
+      gambarOverlayWajah();
+
+      const dikenal = kotakAktif.filter(function (w) { return w.dikenal; });
+      const semuaBaru = kotakAktif.filter(function (w) { return w.baru; });
+
+      if (semuaBaru.length) {
+        const namaGabung = semuaBaru.map(function (w) { return w.nama; }).join(', ');
+        tampilkanCeklistSukses(namaGabung, semuaBaru[0].waktu);
+        if (suaraAktif && window.bunyikanChime) window.bunyikanChime('sukses');
+        if (window.tampilkanToast) {
+          semuaBaru.forEach(function (item) {
+            window.tampilkanToast('Absensi Berhasil: ' + item.nama, 'success', {
+              subteks: 'Kehadiran tercatat pukul ' + (item.waktu || '')
+            });
+          });
+        }
+        perbaruiPanelSamping(data);
+      } else if (dikenal.length) {
+        if (!elemen('ceklist-sukses').classList.contains('aktif')) {
+          aturStatusHud('dikenali', 'Wajah dikenali: ' + dikenal[0].nama);
+        }
+      } else if (kotakAktif.length) {
+        if (!elemen('ceklist-sukses').classList.contains('aktif')) {
+          aturStatusHud('memindai', 'Wajah terdeteksi, belum terdaftar');
+        }
+      } else {
+        if (!elemen('ceklist-sukses').classList.contains('aktif')) {
+          aturStatusHud('memindai', 'Mendeteksi wajah...');
+        }
+      }
     } catch (e) {
-      const info = elemen('s-kamera');
-      if (info) info.textContent = 'Server tidak merespons';
+      if (e && e.name !== 'AbortError') {
+        /* Abaikan sementara jika request tunggal gagal agar video tetap mulus */
+      }
+    } finally {
+      isProcessing = false;
+      kontrolerAbort = null;
+    }
+  }
+
+  async function muatDaftarPerangkatKamera() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices || !pilihKamera) return;
+    try {
+      const perangkat = await navigator.mediaDevices.enumerateDevices();
+      const kameraList = perangkat.filter(function (d) { return d.kind === 'videoinput'; });
+      if (kameraList.length <= 1) {
+        if (wrapPilihKamera) wrapPilihKamera.classList.add('tersembunyi');
+        return;
+      }
+      const pilihanLama = pilihKamera.value;
+      pilihKamera.replaceChildren();
+      kameraList.forEach(function (cam, idx) {
+        const opt = document.createElement('option');
+        opt.value = cam.deviceId;
+        opt.textContent = cam.label || ('Kamera ' + (idx + 1));
+        pilihKamera.appendChild(opt);
+      });
+      if (pilihanLama) pilihKamera.value = pilihanLama;
+      if (wrapPilihKamera) wrapPilihKamera.classList.remove('tersembunyi');
+    } catch (e) {}
+  }
+
+  if (pilihKamera) {
+    pilihKamera.addEventListener('change', function () {
+      if (kameraMenyala && modeAktif === 'webrtc') {
+        matikan();
+        setTimeout(nyalakan, 150);
+      }
+    });
+  }
+
+  function nyalakanFallbackMjpeg() {
+    modeAktif = 'mjpeg';
+    kameraMenyala = true;
+    if (videoEl) videoEl.hidden = true;
+    if (imgFallback) {
+      imgFallback.hidden = false;
+      imgFallback.src = '/api/stream.mjpg?t=' + Date.now();
+    }
+    if (petunjuk) petunjuk.classList.add('sembunyi');
+    if (bingkai) bingkai.classList.add('aktif');
+    elemen('s-mode').textContent = 'Server MJPEG';
+    elemen('info-pipa').textContent = 'Server Stream + Worker AI';
+    aturStatusKamera(true, '');
+    aturStatusHud('memindai', 'Streaming server aktif...');
+    perbaruiTelemetryFps();
+    if (window.aturStatusKameraSisi) window.aturStatusKameraSisi(true);
+    mulaiPolling();
+  }
+
+  window.nyalakan = async function () {
+    if (kameraMenyala || sedangMenyalakan) return;
+    sedangMenyalakan = true;
+
+    try {
+      // Prioritaskan kamera browser native via getUserMedia agar 30/60 FPS tanpa lag
+      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+        try {
+          aturStatusHud('standby', 'Mengakses kamera...');
+          const deviceId = pilihKamera && pilihKamera.value ? pilihKamera.value : undefined;
+          const videoConstraint = {
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+            frameRate: { ideal: 30 }
+          };
+          if (deviceId) videoConstraint.deviceId = { exact: deviceId };
+          else videoConstraint.facingMode = 'user';
+
+          let streamBaru = null;
+          try {
+            streamBaru = await navigator.mediaDevices.getUserMedia({ video: videoConstraint, audio: false });
+          } catch (errConstraint) {
+            streamBaru = await navigator.mediaDevices.getUserMedia({
+              video: { width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 30 } },
+              audio: false
+            });
+          }
+
+          if (!sedangMenyalakan) {
+            streamBaru.getTracks().forEach(function (t) { t.stop(); });
+            return;
+          }
+          mediaStream = streamBaru;
+
+          if (imgFallback) {
+            imgFallback.hidden = true;
+            imgFallback.removeAttribute('src');
+          }
+          if (videoEl) {
+            videoEl.hidden = false;
+            videoEl.srcObject = mediaStream;
+            await videoEl.play();
+          }
+
+          if (!sedangMenyalakan) {
+            matikan();
+            return;
+          }
+
+          modeAktif = 'webrtc';
+          kameraMenyala = true;
+          if (petunjuk) petunjuk.classList.add('sembunyi');
+          if (bingkai) bingkai.classList.add('aktif');
+
+          const track = mediaStream.getVideoTracks()[0];
+          const setelan = track && track.getSettings ? track.getSettings() : {};
+          const resTeks = (setelan.width && setelan.height) ? (setelan.width + '×' + setelan.height) : 'HD';
+          elemen('s-mode').textContent = 'Native ' + resTeks;
+          elemen('info-pipa').textContent = resTeks + ' → ' + LEBAR_PROSES_AI + 'px AI (' + INTERVAL_DETEKSI_MS + 'ms)';
+
+          aturStatusKamera(true, '');
+          aturStatusHud('memindai', 'Mendeteksi wajah...');
+          if (window.aturStatusKameraSisi) window.aturStatusKameraSisi(true);
+
+          sesuaikanUkuranCanvas();
+          mulaiMonitorFps();
+          muatDaftarPerangkatKamera();
+
+          if (timerDeteksi) clearInterval(timerDeteksi);
+          timerDeteksi = setInterval(jalankanSiklusDeteksi, INTERVAL_DETEKSI_MS);
+          setTimeout(jalankanSiklusDeteksi, 250);
+          mulaiPolling();
+          return;
+        } catch (err) {
+          if (!sedangMenyalakan) return;
+          if (window.tampilkanToast) {
+            window.tampilkanToast('Menggunakan stream kamera server sebagai cadangan.', 'success');
+          }
+        }
+      }
+
+      if (sedangMenyalakan) {
+        nyalakanFallbackMjpeg();
+      }
+    } finally {
+      sedangMenyalakan = false;
     }
   };
-  segarkan();
-  penghitung = setInterval(segarkan, 2500);
-}
 
-const mulaiOtomatis = new URLSearchParams(window.location.search).get('mulai') === '1';
-if (mulaiOtomatis) {
-  window.addEventListener('load', function () { setTimeout(nyalakan, 250); });
-} else {
-  mulaiPolling();
-}
+  window.matikan = function () {
+    sedangMenyalakan = false;
+    kameraMenyala = false;
+    modeAktif = 'standby';
+    isProcessing = false;
+    kotakAktif = [];
 
-const gambarStream = elemen('stream');
-if (gambarStream) {
-  gambarStream.addEventListener('error', function () {
-    if (!kameraMenyala) return;
-    aturStatusKamera(false, 'Stream terputus');
-    const petunjuk = elemen('petunjuk');
+    if (timerDeteksi) {
+      clearInterval(timerDeteksi);
+      timerDeteksi = null;
+    }
+    if (kontrolerAbort) {
+      kontrolerAbort.abort();
+      kontrolerAbort = null;
+    }
+    if (rafFps) {
+      cancelAnimationFrame(rafFps);
+      rafFps = null;
+    }
+    if (mediaStream) {
+      mediaStream.getTracks().forEach(function (t) { t.stop(); });
+      mediaStream = null;
+    }
+    if (videoEl) {
+      videoEl.pause();
+      videoEl.srcObject = null;
+    }
+    if (imgFallback) {
+      imgFallback.removeAttribute('src');
+      imgFallback.hidden = true;
+    }
+    if (ctxOverlay && canvasOverlay) {
+      ctxOverlay.clearRect(0, 0, canvasOverlay.width, canvasOverlay.height);
+    }
+
     if (petunjuk) petunjuk.classList.remove('sembunyi');
-  });
-}
+    if (bingkai) bingkai.classList.remove('aktif');
+    elemen('ceklist-sukses').classList.remove('aktif');
+    elemen('s-mode').textContent = 'Standby';
+    fpsTerukur = 0;
+    latensiTerakhirMs = 0;
+    perbaruiTelemetryFps();
+    aturStatusKamera(false, '');
+    aturStatusHud('standby', 'Menunggu kamera diaktifkan');
+    if (window.aturStatusKameraSisi) window.aturStatusKameraSisi(false);
+  };
+
+  window.restartKamera = async function () {
+    const status = elemen('s-kamera');
+    if (status) status.textContent = 'Menyalakan ulang kamera...';
+    if (modeAktif === 'mjpeg') {
+      try {
+        const jawab = await fetch('/api/kamera/restart', { method: 'POST' });
+        const hasil = await jawab.json();
+        if (!hasil.ok) {
+          tampilkanToast(hasil.pesan || 'Gagal menyalakan ulang kamera.', 'error');
+          if (status) status.textContent = hasil.pesan || 'Kamera gagal dinyalakan';
+          return;
+        }
+      } catch (e) {
+        tampilkanToast('Gagal menghubungi server.', 'error');
+        return;
+      }
+    }
+    matikan();
+    setTimeout(nyalakan, 350);
+  };
+
+  window.layarPenuh = function () {
+    if (!bingkai) return;
+    if (document.fullscreenElement) {
+      document.exitFullscreen();
+    } else if (bingkai.requestFullscreen) {
+      bingkai.requestFullscreen();
+    }
+  };
+
+  function itemHadir(r) {
+    const li = document.createElement('li');
+    const avatar = document.createElement('span');
+    avatar.className = 'avatar avatar-hijau';
+    avatar.textContent = (r.nama || '?').slice(0, 1);
+    const info = document.createElement('span');
+    info.className = 'hadir-info';
+    const nama = document.createElement('strong');
+    nama.textContent = r.nama;
+    const ket = document.createElement('small');
+    ket.textContent = 'Terverifikasi';
+    info.append(nama, ket);
+    const waktu = document.createElement('span');
+    waktu.className = 'waktu-pil';
+    waktu.textContent = (r.waktu || '').slice(0, 5);
+    li.append(avatar, info, waktu);
+    return li;
+  }
+
+  function itemKejadian(k) {
+    const li = document.createElement('li');
+    const titik = document.createElement('span');
+    titik.className = 'kejadian-titik';
+    const isi = document.createElement('div');
+    isi.className = 'kejadian-isi';
+    const pesan = document.createElement('strong');
+    pesan.textContent = k.pesan;
+    const jam = document.createElement('small');
+    jam.textContent = k.waktu;
+    isi.append(pesan, jam);
+    li.append(titik, isi);
+    return li;
+  }
+
+  function isiDaftar(id, data, pembuat, teksKosong) {
+    const daftar = elemen(id);
+    if (!daftar) return;
+    daftar.replaceChildren();
+    if (data && data.length) {
+      data.forEach(function (item) { daftar.appendChild(pembuat(item)); });
+    } else {
+      const li = document.createElement('li');
+      li.className = 'kosong';
+      li.textContent = teksKosong;
+      daftar.appendChild(li);
+    }
+  }
+
+  function mulaiPolling() {
+    if (timerPolling) return;
+    const segarkan = async function () {
+      try {
+        const data = await (await fetch('/api/status?t=' + Date.now())).json();
+        perbaruiPanelSamping(data);
+        if (!kameraMenyala) {
+          aturStatusKamera(data.kamera_aktif, data.kamera_galat);
+        }
+      } catch (e) {
+        const info = elemen('s-kamera');
+        if (info && !kameraMenyala) info.textContent = 'Server tidak merespons';
+      }
+    };
+    segarkan();
+    timerPolling = setInterval(segarkan, 4000);
+  }
+
+  if (imgFallback) {
+    imgFallback.addEventListener('error', function () {
+      if (!kameraMenyala || modeAktif !== 'mjpeg') return;
+      matikan();
+      aturStatusKamera(false, 'Kamera tidak tersedia / stream terputus');
+      aturStatusHud('standby', 'Kamera tidak tersedia');
+      if (window.tampilkanToast) {
+        window.tampilkanToast('Kamera tidak tersedia atau izin kamera ditolak.', 'error');
+      }
+    });
+  }
+
+  window.addEventListener('pagehide', matikan);
+
+  const mulaiOtomatis = new URLSearchParams(window.location.search).get('mulai') === '1';
+  if (mulaiOtomatis) {
+    window.addEventListener('load', function () { setTimeout(nyalakan, 220); });
+  } else {
+    mulaiPolling();
+  }
+})();
 </script>
 {% endblock %}

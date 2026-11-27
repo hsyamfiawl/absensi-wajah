@@ -1,19 +1,62 @@
 /* =========================================================
-   Absensi Wajah - interaksi UI
+   Absensi Wajah - Interaksi, Motion, Audio & Theme Engine
    ========================================================= */
 (function () {
   'use strict';
 
   const html = document.documentElement;
+  const metaColorScheme = document.querySelector('meta[name="color-scheme"]');
+  const metaTema = document.querySelector('meta[name="theme-color"]');
   const tombolTema = document.querySelectorAll('[data-tema]');
   const labelTema = document.querySelector('[data-label-tema]');
-  const metaTema = document.querySelector('meta[name="theme-color"]');
+  const mediaGelap = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+  const kurangiGerak = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-  /* ---------- tema terang / gelap ---------- */
-  function terapkanTema(tema, simpan) {
+  /* ---------- tema terang / gelap (mengikuti color-scheme & override lokal) ---------- */
+  function preferensiSistem() {
+    if (!mediaGelap) return 'dark';
+    return mediaGelap.matches ? 'dark' : 'light';
+  }
+
+  function terapkanTampilanTema(tema, metaContent) {
     html.setAttribute('data-theme', tema);
-    if (simpan) {
-      try { localStorage.setItem('tema-webui', tema); } catch (e) {}
+    if (metaColorScheme && metaContent) {
+      metaColorScheme.setAttribute('content', metaContent);
+    }
+    if (labelTema) {
+      labelTema.textContent = tema === 'dark' ? 'Mode terang' : 'Mode gelap';
+    }
+    if (metaTema) {
+      metaTema.setAttribute('content', tema === 'dark' ? '#050911' : '#f4f7fb');
+    }
+  }
+
+  function sinkronkanTemaDariStorage() {
+    let tersimpan = null;
+    try { tersimpan = localStorage.getItem('tema-webui'); } catch (e) {}
+    if (tersimpan === 'light' || tersimpan === 'dark') {
+      terapkanTampilanTema(tersimpan, tersimpan);
+    } else {
+      terapkanTampilanTema(preferensiSistem(), 'light dark');
+    }
+  }
+
+  sinkronkanTemaDariStorage();
+
+  tombolTema.forEach(function (tombol) {
+    tombol.addEventListener('click', function () {
+      const sekarang = html.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
+      const target = sekarang === 'dark' ? 'light' : 'dark';
+      const sistem = preferensiSistem();
+
+      if (target === sistem) {
+        try { localStorage.removeItem('tema-webui'); } catch (e) {}
+        terapkanTampilanTema(target, 'light dark');
+      } else {
+        try { localStorage.setItem('tema-webui', target); } catch (e) {}
+        terapkanTampilanTema(target, target);
+      }
+
       try {
         const url = new URL(window.location.href);
         if (url.searchParams.has('tema')) {
@@ -21,25 +64,24 @@
           window.history.replaceState({}, '', url);
         }
       } catch (e) {}
-    }
-    if (labelTema) {
-      labelTema.textContent = tema === 'dark' ? 'Mode terang' : 'Mode gelap';
-    }
-    if (metaTema) {
-      metaTema.setAttribute('content', tema === 'dark' ? '#071018' : '#f3f7fb');
-    }
-  }
-
-  terapkanTema(html.getAttribute('data-theme') === 'light' ? 'light' : 'dark', false);
-
-  tombolTema.forEach(function (tombol) {
-    tombol.addEventListener('click', function () {
-      const baru = html.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
-      terapkanTema(baru, true);
     });
   });
 
-  /* ---------- jam & tanggal ---------- */
+  if (mediaGelap && mediaGelap.addEventListener) {
+    mediaGelap.addEventListener('change', function () {
+      let tersimpan = null;
+      try { tersimpan = localStorage.getItem('tema-webui'); } catch (e) {}
+      if (tersimpan !== 'light' && tersimpan !== 'dark') {
+        terapkanTampilanTema(preferensiSistem(), 'light dark');
+      }
+    });
+  }
+
+  window.addEventListener('storage', function (e) {
+    if (e.key === 'tema-webui') sinkronkanTemaDariStorage();
+  });
+
+  /* ---------- jam & tanggal real-time ---------- */
   const jam = document.querySelectorAll('[data-jam]');
   const tanggal = document.querySelectorAll('[data-tanggal]');
 
@@ -108,7 +150,108 @@
     if (window.innerWidth > 1024) tutupMenu();
   });
 
-  /* ---------- notifikasi toast ---------- */
+  /* ---------- header elevation & tombol kembali ke atas ---------- */
+  const topbar = document.getElementById('topbar');
+  const sentinel = document.getElementById('scroll-sentinel');
+  const btnKeAtas = document.getElementById('tombol-ke-atas');
+
+  if (sentinel && 'IntersectionObserver' in window) {
+    const observerScroll = new IntersectionObserver(function (entries) {
+      const tergulir = !entries[0].isIntersecting;
+      if (topbar) topbar.classList.toggle('tergulir', tergulir);
+      if (btnKeAtas) btnKeAtas.hidden = !tergulir;
+    }, { threshold: 0 });
+    observerScroll.observe(sentinel);
+  }
+
+  if (btnKeAtas) {
+    btnKeAtas.addEventListener('click', function () {
+      window.scrollTo({
+        top: 0,
+        behavior: kurangiGerak ? 'auto' : 'smooth'
+      });
+    });
+  }
+
+  /* ---------- scroll-reveal staggered motion ---------- */
+  const elemenReveal = document.querySelectorAll('[data-reveal]');
+  if (!kurangiGerak && 'IntersectionObserver' in window && elemenReveal.length) {
+    const revealObs = new IntersectionObserver(function (entries, obs) {
+      entries.forEach(function (entry) {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('tampil');
+          obs.unobserve(entry.target);
+        }
+      });
+    }, { threshold: 0.01 });
+
+    elemenReveal.forEach(function (el) {
+      el.classList.add('siap-reveal');
+      revealObs.observe(el);
+    });
+
+    window.addEventListener('beforeprint', function () {
+      elemenReveal.forEach(function (el) { el.classList.add('tampil'); });
+    });
+  } else {
+    elemenReveal.forEach(function (el) { el.classList.add('tampil'); });
+  }
+
+  /* ---------- pointer spotlight halus pada kartu ---------- */
+  if (!kurangiGerak && window.matchMedia && window.matchMedia('(hover: hover) and (pointer: fine)').matches) {
+    const targetSpotlight = document.querySelectorAll('.stat-kartu, .panel, .hero');
+    targetSpotlight.forEach(function (kartu) {
+      let framePending = false;
+      kartu.addEventListener('pointermove', function (e) {
+        if (framePending) return;
+        framePending = true;
+        requestAnimationFrame(function () {
+          const rect = kartu.getBoundingClientRect();
+          kartu.style.setProperty('--mx', (e.clientX - rect.left) + 'px');
+          kartu.style.setProperty('--my', (e.clientY - rect.top) + 'px');
+          framePending = false;
+        });
+      }, { passive: true });
+    });
+  }
+
+  /* ---------- audio feedback sintetis (Web Audio API) ---------- */
+  let audioCtx = null;
+  window.bunyikanChime = function (jenis) {
+    try {
+      const AudioCtor = window.AudioContext || window.webkitAudioContext;
+      if (!AudioCtor) return;
+      if (!audioCtx) audioCtx = new AudioCtor();
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+
+      const now = audioCtx.currentTime;
+      const mainTone = function (freq, start, dur, vol) {
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, start);
+        gain.gain.setValueAtTime(0.0001, start);
+        gain.gain.exponentialRampToValueAtTime(vol, start + 0.018);
+        gain.gain.exponentialRampToValueAtTime(0.0001, start + dur);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start(start);
+        osc.stop(start + dur + 0.02);
+      };
+
+      if (jenis === 'sukses') {
+        mainTone(784.0, now, 0.14, 0.09);        // G5
+        mainTone(1046.5, now + 0.09, 0.24, 0.11); // C6
+      } else if (jenis === 'galat') {
+        mainTone(330, now, 0.14, 0.08);
+        mainTone(261.6, now + 0.1, 0.2, 0.08);
+      } else {
+        mainTone(660, now, 0.08, 0.04);
+      }
+    } catch (e) {}
+  };
+
+  /* ---------- notifikasi toast dengan pause saat hover/focus ---------- */
   const areaToast = document.getElementById('toast-area');
 
   window.aturStatusKameraSisi = function (aktif, encoding) {
@@ -123,22 +266,48 @@
   function tutupToast(toast) {
     if (!toast || toast.classList.contains('keluar')) return;
     toast.classList.add('keluar');
-    setTimeout(function () { toast.remove(); }, 260);
+    const anims = typeof toast.getAnimations === 'function' ? toast.getAnimations() : [];
+    if (!anims.length || kurangiGerak) {
+      toast.remove();
+      return;
+    }
+    setTimeout(function () { toast.remove(); }, 280);
   }
 
-  function siapkanToast(toast) {
+  function siapkanToast(toast, durasi) {
     if (!toast || toast.dataset.siap === '1') return;
     toast.dataset.siap = '1';
     const tombol = toast.querySelector('[data-tutup-toast]');
     if (tombol) tombol.addEventListener('click', function () { tutupToast(toast); });
-    setTimeout(function () { tutupToast(toast); }, 6500);
+
+    let sisa = durasi || 5500;
+    let timer = null;
+    let mulai = Date.now();
+
+    function jadwalkan() {
+      clearTimeout(timer);
+      mulai = Date.now();
+      timer = setTimeout(function () { tutupToast(toast); }, sisa);
+    }
+
+    function jeda() {
+      clearTimeout(timer);
+      sisa = Math.max(1000, sisa - (Date.now() - mulai));
+    }
+
+    toast.addEventListener('pointerenter', jeda);
+    toast.addEventListener('focusin', jeda);
+    toast.addEventListener('pointerleave', jadwalkan);
+    toast.addEventListener('focusout', jadwalkan);
+    jadwalkan();
   }
 
-  document.querySelectorAll('.toast').forEach(siapkanToast);
+  document.querySelectorAll('.toast').forEach(function (t) { siapkanToast(t, 6500); });
 
-  window.tampilkanToast = function (pesan, kategori) {
+  window.tampilkanToast = function (pesan, kategori, opsi) {
     if (!areaToast) return;
     const jenis = kategori === 'error' ? 'error' : 'success';
+    const conf = opsi || {};
     const toast = document.createElement('div');
     toast.className = 'toast ' + jenis;
     toast.setAttribute('role', 'status');
@@ -150,7 +319,14 @@
 
     const isi = document.createElement('div');
     isi.className = 'toast-isi';
-    isi.textContent = pesan || '';
+    const judul = document.createElement('strong');
+    judul.textContent = pesan || '';
+    isi.appendChild(judul);
+    if (conf.subteks) {
+      const sub = document.createElement('p');
+      sub.textContent = conf.subteks;
+      isi.appendChild(sub);
+    }
 
     const tutup = document.createElement('button');
     tutup.className = 'toast-tutup';
@@ -160,7 +336,7 @@
 
     toast.append(ikon, isi, tutup);
     areaToast.appendChild(toast);
-    siapkanToast(toast);
+    siapkanToast(toast, conf.durasi || 5200);
   };
 
   /* ---------- konfirmasi form ---------- */
@@ -174,7 +350,6 @@
   });
 
   /* ---------- animasi angka statistik ---------- */
-  const kurangiGerak = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   if (!kurangiGerak) {
     document.querySelectorAll('.stat-angka').forEach(function (el) {
       const teks = (el.textContent || '').trim();
@@ -182,7 +357,7 @@
       const target = parseInt(teks, 10);
       if (target <= 0 || target > 100000) return;
       const mulai = performance.now();
-      const durasi = 650;
+      const durasi = 520;
       function langkah(waktu) {
         const progres = Math.min(1, (waktu - mulai) / durasi);
         const halus = 1 - Math.pow(1 - progres, 3);

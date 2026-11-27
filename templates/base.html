@@ -3,27 +3,28 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#071018">
-  <meta name="description" content="Sistem absensi wajah modern dengan pengenalan wajah, dashboard statistik, dan rekap kehadiran.">
-  <title>{% block judul %}Absensi Wajah{% endblock %}</title>
-
+  <meta name="color-scheme" content="light dark">
   <script>
     (function () {
       try {
-        var tema = localStorage.getItem('tema-webui');
+        var meta = document.querySelector('meta[name="color-scheme"]');
         var pilihan = new URLSearchParams(window.location.search).get('tema');
-        if (pilihan === 'light' || pilihan === 'dark') {
-          tema = pilihan;
-        } else if (tema !== 'light' && tema !== 'dark') {
-          tema = window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
-        }
+        var tersimpan = localStorage.getItem('tema-webui');
+        var aktif = (pilihan === 'light' || pilihan === 'dark')
+          ? pilihan
+          : ((tersimpan === 'light' || tersimpan === 'dark') ? tersimpan : null);
+        if (meta) meta.content = aktif ? aktif : 'light dark';
+        var tema = aktif || (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
         document.documentElement.setAttribute('data-theme', tema);
       } catch (e) {}
     })();
   </script>
+  <meta name="theme-color" content="#050911">
+  <meta name="description" content="Sistem absensi wajah modern dengan pengenalan wajah real-time, dashboard statistik, dan rekap kehadiran.">
+  <title>{% block judul %}Absensi Wajah{% endblock %}</title>
 
   <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
-  <link rel="stylesheet" href="{{ url_for('static', filename='style.css', v='3') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css', v='4') }}">
 </head>
 <body>
   <svg class="sprite-ikon" aria-hidden="true" focusable="false">
@@ -56,11 +57,17 @@
     <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3 4.5 6v5.3c0 4.4 3.1 8.1 7.5 9.7 4.4-1.6 7.5-5.3 7.5-9.7V6L12 3Z"/><path d="m9 12 2 2 4-4"/></symbol>
     <symbol id="i-sparkles" viewBox="0 0 24 24"><path d="m12 3 1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5L12 3Z"/><path d="m19 15 .7 2.3L22 18l-2.3.7L19 21l-.7-2.3L16 18l2.3-.7L19 15Z"/></symbol>
     <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></symbol>
+    <symbol id="i-volume" viewBox="0 0 24 24"><path d="M11 5 6 9H3v6h3l5 4V5Z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12"/></symbol>
+    <symbol id="i-volume-off" viewBox="0 0 24 24"><path d="M11 5 6 9H3v6h3l5 4V5Z"/><path d="m22 9-6 6M16 9l6 6"/></symbol>
+    <symbol id="i-flip" viewBox="0 0 24 24"><path d="M8 3H5a2 2 0 0 0-2 2v14c0 1.1.9 2 2 2h3M16 3h3a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-3M12 2v20"/></symbol>
+    <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13 2 4 14h7l-1 8 9-12h-7l1-8Z"/></symbol>
+    <symbol id="i-arrow-up" viewBox="0 0 24 24"><path d="M12 19V5m0 0-6 6m6-6 6 6"/></symbol>
   </svg>
 
   <div class="latar-hias" aria-hidden="true">
     <span class="orb orb-1"></span>
     <span class="orb orb-2"></span>
+    <span class="orb orb-3"></span>
     <span class="grid-hias"></span>
   </div>
 
@@ -73,7 +80,7 @@
       </span>
       <span class="merek-teks">
         <strong>Absensi<span>Wajah</span></strong>
-        <small>Face Recognition</small>
+        <small>Biometric Suite</small>
       </span>
     </a>
 
@@ -116,16 +123,19 @@
         <button class="tombol-tema" type="button" data-tema aria-label="Ganti tema terang atau gelap">
           <svg class="ikon ikon-matahari" aria-hidden="true"><use href="#i-sun"></use></svg>
           <svg class="ikon ikon-bulan" aria-hidden="true"><use href="#i-moon"></use></svg>
-          <span data-label-tema>Mode gelap</span>
+          <span data-label-tema>Mode terang</span>
         </button>
       </div>
 
-      <p class="versi">WebUI 2.0 &middot; Server lokal</p>
+      <p class="versi">WebUI 2.5 &middot; Engine Teroptimasi</p>
     </div>
   </aside>
 
   <div class="kerangka">
-    <header class="atas">
+    <div class="scroll-progress" id="scroll-progress" aria-hidden="true"></div>
+    <div class="scroll-sentinel" id="scroll-sentinel" aria-hidden="true"></div>
+
+    <header class="atas" id="topbar">
       <div class="atas-kiri">
         <button class="tombol-ikon tombol-menu" id="tombol-menu" type="button" aria-label="Buka menu" aria-expanded="false">
           <svg class="ikon" aria-hidden="true"><use href="#i-menu"></use></svg>
@@ -142,6 +152,12 @@
           <small data-tanggal>Memuat tanggal...</small>
         </div>
         <span class="pil-server"><span class="titik-live"></span>Lokal</span>
+        {% if request.endpoint != 'halaman_kamera' %}
+          <a class="tombol utama kecil tombol-atas-cta" href="{{ url_for('halaman_kamera', mulai=1) }}">
+            <svg class="ikon" aria-hidden="true"><use href="#i-camera"></use></svg>
+            <span>Absen</span>
+          </a>
+        {% endif %}
         <button class="tombol-ikon tema-atas" type="button" data-tema aria-label="Ganti tema terang atau gelap">
           <svg class="ikon ikon-matahari" aria-hidden="true"><use href="#i-sun"></use></svg>
           <svg class="ikon ikon-bulan" aria-hidden="true"><use href="#i-moon"></use></svg>
@@ -154,21 +170,28 @@
     </main>
   </div>
 
-  <div class="toast-area" id="toast-area" aria-live="polite">
+  <button class="tombol-ke-atas" id="tombol-ke-atas" type="button" aria-label="Kembali ke atas" hidden>
+    <svg class="ikon" aria-hidden="true"><use href="#i-arrow-up"></use></svg>
+  </button>
+
+  <div class="toast-area" id="toast-area" role="region" aria-label="Notifikasi" aria-live="polite">
     {% with pesan = get_flashed_messages(with_categories=true) %}
       {% for kategori, isi in pesan %}
         <div class="toast {{ kategori }}" role="status">
           <span class="toast-ikon">
             <svg class="ikon" aria-hidden="true"><use href="{{ '#i-alert' if kategori == 'error' else '#i-check-circle' }}"></use></svg>
           </span>
-          <div class="toast-isi">{{ isi }}</div>
+          <div class="toast-isi">
+            <strong>{{ 'Perhatian' if kategori == 'error' else 'Berhasil' }}</strong>
+            <p>{{ isi }}</p>
+          </div>
           <button class="toast-tutup" type="button" data-tutup-toast aria-label="Tutup notifikasi">&times;</button>
         </div>
       {% endfor %}
     {% endwith %}
   </div>
 
-  <script src="{{ url_for('static', filename='app.js', v='3') }}"></script>
+  <script src="{{ url_for('static', filename='app.js', v='4') }}"></script>
   {% block skrip %}{% endblock %}
 </body>
 </html>

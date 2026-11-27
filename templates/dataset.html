@@ -3,7 +3,7 @@
 {% block remah %}Dataset Wajah{% endblock %}
 
 {% block konten %}
-<header class="judul-halaman">
+<header class="judul-halaman" data-reveal>
   <div>
     <span class="eyebrow">Data wajah</span>
     <h1>Dataset Wajah</h1>
@@ -19,7 +19,7 @@
 
 <section class="dataset-grid">
   <div class="dataset-kiri">
-    <article class="panel">
+    <article class="panel" data-reveal style="--reveal-delay: 50ms">
       <header class="panel-kepala">
         <div>
           <h2>Tambah orang baru</h2>
@@ -49,11 +49,11 @@
       </form>
     </article>
 
-    <article class="panel">
+    <article class="panel" data-reveal style="--reveal-delay: 110ms">
       <header class="panel-kepala">
         <div>
           <h2>Ambil dari kamera</h2>
-          <p>Rekam langsung tanpa upload</p>
+          <p>Rekam langsung dengan preview 30 FPS</p>
         </div>
         <span class="ikon-bulat"><svg class="ikon" aria-hidden="true"><use href="#i-video"></use></svg></span>
       </header>
@@ -74,10 +74,11 @@
         </button>
 
         <div id="pratinjau" class="pratinjau-kamera tersembunyi">
-          <img id="gambar-kamera" alt="Pratinjau kamera">
+          <video id="pratinjau-video" class="cermin" autoplay playsinline muted></video>
+          <img id="gambar-kamera" alt="Pratinjau kamera" hidden>
           <span class="pratinjau-live"><span class="titik-live"></span>Live</span>
           <div class="pratinjau-aksi">
-            <button class="tombol utama" type="button" onclick="tangkapFoto()">
+            <button class="tombol utama" type="button" id="tombol-tangkap" onclick="tangkapFoto()">
               <svg class="ikon" aria-hidden="true"><use href="#i-camera"></use></svg>
               Ambil Foto
             </button>
@@ -89,7 +90,7 @@
     </article>
   </div>
 
-  <article class="panel panel-dataset">
+  <article class="panel panel-dataset" data-reveal style="--reveal-delay: 150ms">
     <header class="panel-kepala">
       <div>
         <h2>Orang terdaftar</h2>
@@ -263,47 +264,138 @@ if (pilihNama) {
   }
 }
 
-function mulaiPratinjau() {
+let streamPratinjau = null;
+let modePratinjau = 'mati';
+let sedangMembukaPratinjau = false;
+
+async function mulaiPratinjau() {
+  if (modePratinjau !== 'mati' || sedangMembukaPratinjau) return;
+  const video = document.getElementById('pratinjau-video');
   const img = document.getElementById('gambar-kamera');
   const kotak = document.getElementById('pratinjau');
-  if (!img || !kotak) return;
-  img.src = '/api/pratinjau.mjpg?t=' + Date.now();
-  kotak.classList.remove('tersembunyi');
   const tombol = document.getElementById('tombol-pratinjau');
-  if (tombol) tombol.textContent = 'Kamera menyala';
+  const status = document.getElementById('status-tangkap');
+  if (!kotak) return;
+
+  sedangMembukaPratinjau = true;
+  if (tombol) tombol.disabled = true;
+  if (status) status.textContent = '';
+
+  try {
+    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia && video) {
+      try {
+        const streamBaru = await navigator.mediaDevices.getUserMedia({
+          video: { width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 30 }, facingMode: 'user' },
+          audio: false
+        });
+        if (!sedangMembukaPratinjau) {
+          streamBaru.getTracks().forEach(function (t) { t.stop(); });
+          return;
+        }
+        streamPratinjau = streamBaru;
+        video.srcObject = streamPratinjau;
+        video.hidden = false;
+        if (img) { img.hidden = true; img.removeAttribute('src'); }
+        await video.play();
+        modePratinjau = 'webrtc';
+        kotak.classList.remove('tersembunyi');
+        if (tombol) tombol.textContent = 'Kamera menyala';
+        return;
+      } catch (e) {}
+    }
+
+    if (video) video.hidden = true;
+    if (img) {
+      img.hidden = false;
+      img.src = '/api/pratinjau.mjpg?t=' + Date.now();
+    }
+    modePratinjau = 'mjpeg';
+    kotak.classList.remove('tersembunyi');
+    if (tombol) tombol.textContent = 'Kamera menyala';
+  } finally {
+    sedangMembukaPratinjau = false;
+    if (tombol) tombol.disabled = (modePratinjau !== 'mati');
+  }
 }
 
 function hentikanPratinjau() {
+  sedangMembukaPratinjau = false;
+  const video = document.getElementById('pratinjau-video');
   const img = document.getElementById('gambar-kamera');
   const kotak = document.getElementById('pratinjau');
-  if (img) img.removeAttribute('src');
-  if (kotak) kotak.classList.add('tersembunyi');
   const tombol = document.getElementById('tombol-pratinjau');
-  if (tombol) tombol.innerHTML = '<svg class="ikon" aria-hidden="true"><use href="#i-video"></use></svg> Nyalakan Kamera';
+
+  if (streamPratinjau) {
+    streamPratinjau.getTracks().forEach(function (t) { t.stop(); });
+    streamPratinjau = null;
+  }
+  if (video) {
+    video.pause();
+    video.srcObject = null;
+  }
+  if (img) {
+    img.removeAttribute('src');
+    img.hidden = true;
+  }
+  modePratinjau = 'mati';
+  if (kotak) kotak.classList.add('tersembunyi');
+  if (tombol) {
+    tombol.disabled = false;
+    tombol.innerHTML = '<svg class="ikon" aria-hidden="true"><use href="#i-video"></use></svg> Nyalakan Kamera';
+  }
 }
+
+const gambarPratinjau = document.getElementById('gambar-kamera');
+if (gambarPratinjau) {
+  gambarPratinjau.addEventListener('error', function () {
+    if (modePratinjau !== 'mjpeg') return;
+    hentikanPratinjau();
+    const status = document.getElementById('status-tangkap');
+    if (status) status.textContent = 'Kamera tidak dapat diakses.';
+  });
+}
+
+window.addEventListener('pagehide', hentikanPratinjau);
 
 async function tangkapFoto() {
   const status = document.getElementById('status-tangkap');
+  const btn = document.getElementById('tombol-tangkap');
   const nama = namaDipilih();
   if (!nama) {
     if (status) status.textContent = 'Pilih nama atau tulis nama baru terlebih dahulu.';
     return;
   }
   if (status) status.textContent = 'Menyimpan foto...';
+  if (btn) btn.disabled = true;
 
   const data = new FormData();
   data.append('nama', nama);
+
+  if (modePratinjau === 'webrtc') {
+    const video = document.getElementById('pratinjau-video');
+    if (video && video.videoWidth > 0) {
+      const c = document.createElement('canvas');
+      c.width = video.videoWidth;
+      c.height = video.videoHeight;
+      c.getContext('2d').drawImage(video, 0, 0, c.width, c.height);
+      const blob = await new Promise(function (resolve) { c.toBlob(resolve, 'image/jpeg', 0.9); });
+      if (blob) data.append('foto', blob, 'capture.jpg');
+    }
+  }
+
   try {
     const jawab = await fetch('/api/tangkap', { method: 'POST', body: data });
     const hasil = await jawab.json();
     if (status) status.textContent = hasil.pesan;
     tampilkanToast(hasil.pesan, hasil.ok ? 'success' : 'error');
     if (hasil.ok) {
-      setTimeout(function () { window.location.reload(); }, 900);
+      setTimeout(function () { window.location.reload(); }, 850);
     }
   } catch (e) {
     if (status) status.textContent = 'Gagal menghubungi server.';
     tampilkanToast('Gagal menghubungi server.', 'error');
+  } finally {
+    if (btn) btn.disabled = false;
   }
 }
 

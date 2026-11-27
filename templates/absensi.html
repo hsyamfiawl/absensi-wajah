@@ -3,7 +3,7 @@
 {% block remah %}Rekap Absensi{% endblock %}
 
 {% block konten %}
-<header class="judul-halaman">
+<header class="judul-halaman" data-reveal>
   <div>
     <span class="eyebrow">Laporan kehadiran</span>
     <h1>Rekap Absensi</h1>
@@ -31,28 +31,28 @@
 </header>
 
 <section class="stat-grid ringkas-grid">
-  <article class="stat-kartu hijau kecil">
+  <article class="stat-kartu hijau kecil" data-reveal style="--reveal-delay: 40ms">
     <span class="stat-ikon"><svg class="ikon" aria-hidden="true"><use href="#i-clipboard"></use></svg></span>
     <div>
       <strong class="stat-angka">{{ stat.jumlah_baris }}</strong>
       <span class="stat-label">Baris ditampilkan</span>
     </div>
   </article>
-  <article class="stat-kartu sian kecil">
+  <article class="stat-kartu sian kecil" data-reveal style="--reveal-delay: 90ms">
     <span class="stat-ikon"><svg class="ikon" aria-hidden="true"><use href="#i-users"></use></svg></span>
     <div>
       <strong class="stat-angka">{{ stat.jumlah_nama }}</strong>
       <span class="stat-label">Orang unik</span>
     </div>
   </article>
-  <article class="stat-kartu kuning kecil">
+  <article class="stat-kartu kuning kecil" data-reveal style="--reveal-delay: 140ms">
     <span class="stat-ikon"><svg class="ikon" aria-hidden="true"><use href="#i-check-circle"></use></svg></span>
     <div>
       <strong class="stat-angka">{{ stat.hadir_hari_ini }}</strong>
       <span class="stat-label">Hadir hari ini</span>
     </div>
   </article>
-  <article class="stat-kartu ungu kecil">
+  <article class="stat-kartu ungu kecil" data-reveal style="--reveal-delay: 190ms">
     <span class="stat-ikon"><svg class="ikon" aria-hidden="true"><use href="#i-activity"></use></svg></span>
     <div>
       <strong class="stat-angka">{{ stat.total_semua }}</strong>
@@ -61,7 +61,7 @@
   </article>
 </section>
 
-<section class="panel panel-filter">
+<section class="panel panel-filter" data-reveal style="--reveal-delay: 100ms">
   <header class="panel-kepala">
     <div>
       <h2>Filter data</h2>
@@ -117,7 +117,7 @@
 </section>
 
 <section class="grid-dua rekap-grid">
-  <article class="panel">
+  <article class="panel" data-reveal style="--reveal-delay: 120ms">
     <header class="panel-kepala">
       <div>
         <h2>Catatan kehadiran</h2>
@@ -175,7 +175,7 @@
   </article>
 
   <div class="rekap-kanan">
-    <article class="panel">
+    <article class="panel" data-reveal style="--reveal-delay: 180ms">
       <header class="panel-kepala">
         <div>
           <h2>Rekap per orang</h2>
@@ -204,7 +204,7 @@
       {% endif %}
     </article>
 
-    <article class="panel">
+    <article class="panel" data-reveal style="--reveal-delay: 220ms">
       <header class="panel-kepala">
         <div>
           <h2>Belum pernah hadir</h2>

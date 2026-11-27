@@ -72,6 +72,8 @@ galeri = wd.GaleriWajah()
 pencatat = wd.PencatatAbsensi()
 kejadian = deque(maxlen=50)
 kunci_kuncian = threading.Lock()
+kunci_galeri = threading.RLock()
+kunci_pencatat = threading.Lock()
 
 
 # ======================
@@ -229,6 +231,123 @@ def konteks_global():
 # ======================
 # PROSES FRAME KAMERA
 # ======================
+def pastikan_siap():
+    """Memastikan galeri wajah & pencatat absensi dimuat sekali saat startup/awal."""
+    if not galeri.sudah_dimuat():
+        with kunci_galeri:
+            if not galeri.sudah_dimuat():
+                galeri.muat(cetak_laporan=False)
+    with kunci_pencatat:
+        if not pencatat._sudah and os.path.exists(pencatat.path):
+            pencatat.muat_yang_sudah()
+
+
+def deteksi_frame_cepat(frame, tandai_absen=True, maks_lebar=480):
+    """Mendeteksi wajah pada frame yang sudah di-downscale dengan cepat dan non-blocking.
+
+    Mengembalikan daftar dict wajah dengan koordinat ternormalisasi [0..1] dan piksel.
+    """
+    if frame is None or frame.size == 0:
+        return []
+
+    pastikan_siap()
+    tinggi_asli, lebar_asli = frame.shape[:2]
+    if lebar_asli > maks_lebar:
+        skala = maks_lebar / float(lebar_asli)
+        kecil = cv2.resize(
+            frame,
+            (maks_lebar, max(1, int(round(tinggi_asli * skala)))),
+            interpolation=cv2.INTER_AREA,
+        )
+    else:
+        kecil = frame
+
+    tinggi_k, lebar_k = kecil.shape[:2]
+    rgb = wd.bgr_ke_rgb(kecil)
+
+    daftar_lokasi = wd.cari_wajah(rgb, upsample=1)
+    daftar_encoding = encoding_semua(rgb, daftar_lokasi)
+
+    hasil = []
+    for lokasi, encoding in zip(daftar_lokasi, daftar_encoding):
+        atas, kanan, bawah, kiri = lokasi
+        nama, jarak = (None, None)
+        if encoding is not None:
+            with kunci_galeri:
+                if galeri.sudah_dimuat():
+                    nama, jarak = galeri.cari(encoding)
+
+        dikenal = bool(nama)
+        baru = False
+        waktu_catat = None
+        if dikenal:
+            with kunci_pencatat:
+                if tandai_absen:
+                    catatan = pencatat.catat(nama)
+                    if catatan and catatan["baru"]:
+                        baru = True
+                        waktu_catat = catatan["waktu"]
+                        catat_kejadian(
+                            f"ABSEN: {catatan['nama']} tercatat {catatan['waktu']}"
+                        )
+
+        keyakinan = None
+        if jarak is not None:
+            keyakinan = max(0, min(100, int(round((1.0 - min(jarak, 1.0)) * 100))))
+
+        nx = max(0.0, min(1.0, kiri / float(lebar_k)))
+        ny = max(0.0, min(1.0, atas / float(tinggi_k)))
+        nw = max(0.0, min(1.0 - nx, (kanan - kiri) / float(lebar_k)))
+        nh = max(0.0, min(1.0 - ny, (bawah - atas) / float(tinggi_k)))
+
+        hasil.append({
+            "nama": nama.upper() if dikenal else "TIDAK DIKENAL",
+            "dikenal": dikenal,
+            "jarak": round(jarak, 4) if jarak is not None else None,
+            "keyakinan": keyakinan,
+            "baru": baru,
+            "waktu": waktu_catat,
+            "nx": round(nx, 4),
+            "ny": round(ny, 4),
+            "nw": round(nw, 4),
+            "nh": round(nh, 4),
+            "lokasi_norm": (ny, nx + nw, ny + nh, nx),
+        })
+
+    return hasil
+
+
+def gambar_anotasi(frame, daftar_wajah, batas_nama=True):
+    """Menggambar bounding box hasil deteksi terakhir ke frame OpenCV."""
+    if frame is None or not daftar_wajah:
+        return frame
+    tinggi, lebar = frame.shape[:2]
+    terbaru = None
+    for item in daftar_wajah:
+        ny1, nx2, ny2, nx1 = item["lokasi_norm"]
+        y1 = int(max(0, min(tinggi - 1, ny1 * tinggi)))
+        x2 = int(max(0, min(lebar, nx2 * lebar)))
+        y2 = int(max(0, min(tinggi, ny2 * tinggi)))
+        x1 = int(max(0, min(lebar - 1, nx1 * lebar)))
+        if item["dikenal"]:
+            warna = (0, 255, 0)
+            label = item["nama"] if not batas_nama else item["nama"][:22]
+            if item.get("baru"):
+                terbaru = item
+        else:
+            warna = (0, 0, 255)
+            label = "TIDAK DIKENAL"
+        wd.kotak_wajah(frame, (y1, x2, y2, x1), warna, label=label, skala_label=0.6)
+
+    if terbaru is not None:
+        wd.teks_di_layar(
+            frame,
+            f"TERCATAT: {terbaru['nama']}  {terbaru.get('waktu') or ''}",
+            (20, 40), skala=0.9, warna=(0, 255, 0), tebal=2,
+        )
+    return frame
+
+
 def proses_absensi(frame, tandai_absen=True, batas_nama=True):
     """Mendeteksi wajah pada frame, menggambar kotak, dan mencatat kehadiran.
 
@@ -237,6 +356,7 @@ def proses_absensi(frame, tandai_absen=True, batas_nama=True):
     if frame is None:
         return frame, []
 
+    pastikan_siap()
     tinggi, lebar = frame.shape[:2]
     kecil = wd.perkecil(frame, SKALA_FRAME)
     rgb = wd.bgr_ke_rgb(kecil)
@@ -250,8 +370,10 @@ def proses_absensi(frame, tandai_absen=True, batas_nama=True):
 
     for lokasi, encoding in zip(daftar_lokasi, daftar_encoding):
         nama, jarak = (None, None)
-        if encoding is not None and galeri.sudah_dimuat():
-            nama, jarak = galeri.cari(encoding)
+        if encoding is not None:
+            with kunci_galeri:
+                if galeri.sudah_dimuat():
+                    nama, jarak = galeri.cari(encoding)
 
         if nama:
             hasil.append({
@@ -261,13 +383,21 @@ def proses_absensi(frame, tandai_absen=True, batas_nama=True):
                 "baru": False,
             })
             if tandai_absen:
-                catatan = pencatat.catat(nama)
-                if catatan and catatan["baru"]:
-                    hasil[-1]["baru"] = True
-                    terbaru = catatan
-                    catat_kejadian(
-                        f"ABSEN: {catatan['nama']} tercatat {catatan['waktu']}"
-                    )
+                with kunci_pencatat:
+                    catatan = pencatat.catat(nama)
+                    if catatan and catatan["baru"]:
+                        hasil[-1]["baru"] = True
+                        terbaru = catatan
+                        catat_kejadian(
+                            f"ABSEN: {catatan['nama']} tercatat {catatan['waktu']}"
+                        )
+        else:
+            hasil.append({
+                "nama": "TIDAK DIKENAL",
+                "dikenal": False,
+                "jarak": jarak,
+                "baru": False,
+            })
 
     # Gambar anotasi pada frame resolusi penuh
     for lokasi, item in zip(daftar_lokasi, hasil):
@@ -284,22 +414,6 @@ def proses_absensi(frame, tandai_absen=True, batas_nama=True):
             label = "TIDAK DIKENAL"
         wd.kotak_wajah(frame, (y1, x2, y2, x1), warna, label=label, skala_label=0.6)
 
-    # Kotak wajah yang terdeteksi tapi tidak dikenali
-    for lokasi in daftar_lokasi[len(hasil):]:
-        atas, kanan, bawah, kiri = lokasi
-        wd.kotak_wajah(
-            frame,
-            (
-                int(max(0, min(tinggi - 1, atas * faktor))),
-                int(max(0, min(lebar, kanan * faktor))),
-                int(max(0, min(tinggi, bawah * faktor))),
-                int(max(0, min(lebar - 1, kiri * faktor))),
-            ),
-            (0, 0, 255),
-            label="TIDAK DIKENAL",
-            skala_label=0.6,
-        )
-
     # Kabar singkat ketika ada orang yang baru tercatat hari ini
     if terbaru is not None:
         wd.teks_di_layar(
@@ -308,7 +422,7 @@ def proses_absensi(frame, tandai_absen=True, batas_nama=True):
             (20, 40), skala=0.9, warna=(0, 255, 0), tebal=2,
         )
 
-    return frame, hasil
+    return frame, [h for h in hasil if h["dikenal"]]
 
 
 def encoding_semua(rgb, daftar_lokasi):
@@ -336,14 +450,17 @@ def catat_kejadian(pesan):
 def kehadiran_hari_ini():
     """Mengembalikan (tanggal_hari_ini, daftar kehadiran hari ini)."""
     tanggal = datetime.now().strftime("%Y-%m-%d")
-    baris = [r for r in pencatat.baca_semua() if r["tanggal"] == tanggal]
+    with kunci_pencatat:
+        semua = pencatat.baca_semua()
+    baris = [r for r in semua if r["tanggal"] == tanggal]
     baris.sort(key=lambda r: r["waktu"], reverse=True)
     return tanggal, baris
 
 
 def saring_catatan():
     """Menerapkan filter dari query string dan mengembalikan (baris, stat)."""
-    semua = pencatat.baca_semua()
+    with kunci_pencatat:
+        semua = pencatat.baca_semua()
     nama = (request.args.get("nama") or "").strip().upper()
     tanggal = (request.args.get("tanggal") or "").strip()
     mulai = (request.args.get("mulai") or "").strip()
@@ -400,7 +517,8 @@ def path_foto_aman(nama, nama_file):
 
 
 def muat_galeri(paksa=False, cetak=False):
-    return galeri.muat(paksa=paksa, cetak_laporan=cetak)
+    with kunci_galeri:
+        return galeri.muat(paksa=paksa, cetak_laporan=cetak)
 
 
 # ======================
@@ -408,7 +526,8 @@ def muat_galeri(paksa=False, cetak=False):
 # ======================
 @app.get("/")
 def beranda():
-    stat = pencatat.statistik()
+    with kunci_pencatat:
+        stat = pencatat.statistik()
     orang = wd.ringkasan_dataset()
     total_foto = sum(o["jumlah_foto"] for o in orang)
 
@@ -541,6 +660,7 @@ def dataset_hapus_foto():
     nama_file = request.form.get("file", "")
     lokasi = path_foto_aman(nama, nama_file)
     if wd.hapus_berkas(lokasi):
+        muat_galeri(paksa=True)
         flash(f"Foto {nama_file} ({wd.bersihkan_nama(nama)}) dihapus.", "success")
     else:
         flash("Foto tidak ditemukan.", "error")
@@ -594,15 +714,16 @@ def absensi_export():
 
 @app.post("/absensi/reset")
 def absensi_reset():
-    if os.path.exists(pencatat.path):
-        cadangan = pencatat.path + ".bak"
-        os.replace(pencatat.path, cadangan)
-        with open(pencatat.path, "w", newline="", encoding="utf-8") as f:
-            f.write(",".join(pencatat.HEADER) + "\n")
-        pencatat.muat_yang_sudah()
-        flash(f"Seluruh catatan absensi dikosongkan. Cadangan: {os.path.basename(cadangan)}", "success")
-    else:
-        flash("Belum ada file absensi untuk dikosongkan.", "error")
+    with kunci_pencatat:
+        if os.path.exists(pencatat.path):
+            cadangan = pencatat.path + ".bak"
+            os.replace(pencatat.path, cadangan)
+            with open(pencatat.path, "w", newline="", encoding="utf-8") as f:
+                f.write(",".join(pencatat.HEADER) + "\n")
+            pencatat.muat_yang_sudah()
+            flash(f"Seluruh catatan absensi dikosongkan. Cadangan: {os.path.basename(cadangan)}", "success")
+        else:
+            flash("Belum ada file absensi untuk dikosongkan.", "error")
     return redirect(url_for("halaman_absensi"))
 
 
@@ -624,12 +745,30 @@ def halaman_kamera():
 
 @app.get("/api/stream.mjpg")
 def api_stream():
+    """Fallback MJPEG stream dengan pemisahan loop video & worker deteksi wajah."""
     if not kamera.ambil():
         return Response(kamera.galat or "Kamera tidak tersedia", status=503,
                         mimetype="text/plain")
 
+    pastikan_siap()
+
     def hasil():
         seq = 0
+        kunci_lokal = threading.Lock()
+        wajah_terakhir = []
+        sedang_proses = False
+        terakhir_deteksi = 0.0
+
+        def jalankan_deteksi(salinan_frame):
+            nonlocal wajah_terakhir, sedang_proses
+            try:
+                hasil_wajah = deteksi_frame_cepat(salinan_frame, tandai_absen=True, maks_lebar=420)
+                with kunci_lokal:
+                    wajah_terakhir = hasil_wajah
+            finally:
+                with kunci_lokal:
+                    sedang_proses = False
+
         try:
             while True:
                 frame, seq_baru = kamera.frame_terbaru(seq)
@@ -639,7 +778,22 @@ def api_stream():
                     continue
                 seq = seq_baru
 
-                frame, _ = proses_absensi(frame, tandai_absen=True)
+                sekarang = time.monotonic()
+                with kunci_lokal:
+                    perlu_deteksi = (not sedang_proses) and ((sekarang - terakhir_deteksi) >= 0.30)
+                    if perlu_deteksi:
+                        sedang_proses = True
+                        terakhir_deteksi = sekarang
+                    anotasi = list(wajah_terakhir)
+
+                if perlu_deteksi:
+                    threading.Thread(
+                        target=jalankan_deteksi,
+                        args=(frame.copy(),),
+                        daemon=True,
+                    ).start()
+
+                gambar_anotasi(frame, anotasi)
                 ok, buffer = cv2.imencode(".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
                 if not ok:
                     continue
@@ -658,6 +812,64 @@ def api_stream():
         mimetype="multipart/x-mixed-replace; boundary=frame",
         headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"},
     )
+
+
+@app.post("/api/deteksi")
+def api_deteksi():
+    """Menerima frame JPEG ringan (downscaled) dari browser <video> dan mengembalikan hasil deteksi."""
+    berkas = request.files.get("frame")
+    if not berkas:
+        return jsonify({"ok": False, "pesan": "Frame tidak ditemukan."}), 400
+
+    data = berkas.read()
+    if not data:
+        return jsonify({"ok": False, "pesan": "Frame kosong."}), 400
+
+    arr = np.frombuffer(data, dtype=np.uint8)
+    frame = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+    if frame is None or frame.size == 0:
+        return jsonify({"ok": False, "pesan": "Frame tidak dapat didekode."}), 400
+
+    tandai = request.form.get("tandai", "1") != "0"
+    mulai = time.perf_counter()
+    wajah_mentah = deteksi_frame_cepat(frame, tandai_absen=tandai, maks_lebar=480)
+    durasi_ms = int(round((time.perf_counter() - mulai) * 1000))
+
+    wajah = [
+        {
+            "nama": w["nama"],
+            "dikenal": w["dikenal"],
+            "jarak": w["jarak"],
+            "keyakinan": w["keyakinan"],
+            "baru": w["baru"],
+            "waktu": w["waktu"],
+            "nx": w["nx"],
+            "ny": w["ny"],
+            "nw": w["nw"],
+            "nh": w["nh"],
+        }
+        for w in wajah_mentah
+    ]
+
+    ada_baru = any(w["baru"] for w in wajah)
+    _, hari_ini = kehadiran_hari_ini()
+    with kunci_pencatat:
+        total_catatan = pencatat.statistik()["total_catatan"]
+    with kunci_kuncian:
+        isi_kejadian = list(kejadian)[:10]
+
+    return jsonify({
+        "ok": True,
+        "wajah": wajah,
+        "ada_baru": ada_baru,
+        "waktu_deteksi_ms": durasi_ms,
+        "jumlah_encoding": galeri.jumlah_arah,
+        "jumlah_orang": len(wd.daftar_nama_orang()),
+        "hadir_hari_ini": len(hari_ini),
+        "total_catatan": total_catatan,
+        "hari_ini": hari_ini,
+        "kejadian": isi_kejadian,
+    })
 
 
 @app.get("/api/pratinjau.mjpg")
@@ -697,12 +909,21 @@ def api_pratinjau():
 
 @app.post("/api/tangkap")
 def api_tangkap():
-    """Menyimpan satu frame kamera ke dataset/<nama>/."""
+    """Menyimpan satu frame kamera (dari upload browser <video> atau kamera server) ke dataset/<nama>/."""
     nama = wd.bersihkan_nama(request.form.get("nama", ""))
     if not wd.nama_valid(nama):
         return jsonify({"ok": False, "pesan": "Nama tidak valid."}), 400
 
-    frame = kamera.snapshot()
+    berkas = request.files.get("foto")
+    frame = None
+    if berkas:
+        data = berkas.read()
+        if data:
+            frame = cv2.imdecode(np.frombuffer(data, dtype=np.uint8), cv2.IMREAD_COLOR)
+
+    if frame is None:
+        frame = kamera.snapshot()
+
     if frame is None:
         return jsonify({"ok": False, "pesan": "Kamera tidak bisa diakses."}), 503
 
@@ -738,7 +959,8 @@ def api_kamera_restart():
 
 @app.get("/api/status")
 def api_status():
-    stat = pencatat.statistik()
+    with kunci_pencatat:
+        stat = pencatat.statistik()
     _, hari_ini = kehadiran_hari_ini()
     with kunci_kuncian:
         isi_kejadian = list(kejadian)[:10]
